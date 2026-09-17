@@ -19,12 +19,20 @@ S = "${WORKDIR}"
 
 inherit systemd
 
+# epics-common supplies EPICS_TARGET_ARCH (TARGET_ARCH -> linux-aarch64 and
+# friends), baked into the generated epics-ioc-env so ioc-start.sh can locate
+# bin/<arch> executables of binary-mode IOC instances.
+inherit epics-common
+
 # Site-level defaults, written into the generated epics-ioc-env data file.
 EPICS_IOC_ENV_ROOT ?= "/etc/epics/instances"
 EPICS_IOC_MACHINE_ENV_ROOT ?= "/boot/iocs"
 EPICS_IOC_PORT_BASE ?= "21000"
 EPICS_IOC_RUN_DIR ?= "/run/epics"
-PROCSERV_ARGS ?= "-A --oneshot"
+# Restart policy stays with systemd (--oneshot). Do not use procServ short
+# options beyond the documented set here: upstream procServ has no -A short
+# option (only the long-only --allow) and the board would fail to start.
+PROCSERV_ARGS ?= "--oneshot"
 
 SYSTEMD_PACKAGES = "${PN}"
 SYSTEMD_SERVICE:${PN} = "epics-ioc@.service"
