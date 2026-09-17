@@ -153,6 +153,11 @@ ioc-ports --audit
 ioc-manager list                  # 两层注册表里的实例 + 状态
 ioc-manager report                # 名字 / 槽位 / 端口 / 前缀 / 应用
 ioc-manager status                # 每个实例一行
+ioc-manager start blm             # 启动单个实例
+ioc-manager stop blm              # 停止单个实例
+ioc-manager restart blm           # 重启单个实例
+ioc-manager enable blm            # 开机自启
+ioc-manager disable blm           # 取消开机自启
 ioc-manager startall | stopall
 ioc-manager status scope01        # 单个实例的完整 systemctl status
 ```

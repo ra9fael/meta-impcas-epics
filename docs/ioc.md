@@ -167,7 +167,12 @@ ioc-ports --audit
 ioc-manager list                  # instances from both layers + state
 ioc-manager report                # name / slot / port / prefix / app
 ioc-manager status                # one line per instance
-ioc-manager startall | stopall
+ioc-manager start blm             # start one instance
+ioc-manager stop blm              # stop one instance
+ioc-manager restart blm           # restart one instance
+ioc-manager enable blm            # enable auto-start at boot
+ioc-manager disable blm           # disable auto-start at boot
+ioc-manager startall | stopall    # start/stop every instance
 ioc-manager status scope01        # full systemctl status for one instance
 ```
 

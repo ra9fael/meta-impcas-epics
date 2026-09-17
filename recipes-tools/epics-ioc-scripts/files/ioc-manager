@@ -19,6 +19,11 @@ usage() {
     echo "  list             instances from both registry layers, with state"
     echo "  report [name]    name / slot / console port / prefix / application"
     echo "  status [name]    systemctl status for one or all instances"
+    echo "  start <name>     start one instance"
+    echo "  stop <name>      stop one instance"
+    echo "  restart <name>   restart one instance"
+    echo "  enable <name>    enable auto-start at boot"
+    echo "  disable <name>   disable auto-start at boot"
     echo "  startall         start every registered instance"
     echo "  stopall          stop every registered instance"
     exit 2
@@ -99,6 +104,10 @@ case "$cmd" in
             active=$(unit_state is-active "$name")
             printf "%-16s %s\n" "$name" "${active:-inactive}"
         done
+        ;;
+    start|stop|restart|enable|disable)
+        [ -n "$2" ] || { echo "usage: $0 $cmd <instance-name>" >&2; exit 2; }
+        systemctl "$cmd" "epics-ioc@$2.service"
         ;;
     startall)
         for name in $(entries); do
