@@ -174,6 +174,7 @@ ioc-manager enable blm            # enable auto-start at boot
 ioc-manager disable blm           # disable auto-start at boot
 ioc-manager startall | stopall    # start/stop every instance
 ioc-manager status scope01        # full systemctl status for one instance
+ioc-manager console scope01       # attach to its procServ console
 ```
 
 ## The start dispatcher
@@ -214,9 +215,15 @@ systemctl enable --now 'epics-ioc@scope02'
 netstat -ltnp | grep -E ':210[0-2][0-9]'      # consoles 21000 (blm) / 21010 / 21020
 cat /run/epics/scope02.info                   # PID and endpoints of the running IOC
 
-telnet <board-ip> 21010                       # console of scope01
-telnet <board-ip> 21020                       # console of scope02
+ioc-manager console scope01                   # console on this board (any port)
+telnet <board-ip> 21010                       # same console from another host
+telnet <board-ip> 21020                       # scope02's console from there
 ```
+
+`ioc-manager console <name>` resolves the endpoint from the instance infofile
+(so a pinned `PS_PORT` and a wildcard bind are both handled) and execs whatever
+client the image has: telnet, socat or nc. procServ gives console **control**
+to the first attached client and serves further ones read-only.
 
 The console is an iocsh prompt for the running IOC (`help`, `dbpr`, ...).
 procServ runs one-shot: when the IOC exits -- crash or `^X` from the console

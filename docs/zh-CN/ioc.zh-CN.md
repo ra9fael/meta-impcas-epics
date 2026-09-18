@@ -160,6 +160,7 @@ ioc-manager enable blm            # 开机自启
 ioc-manager disable blm           # 取消开机自启
 ioc-manager startall | stopall
 ioc-manager status scope01        # 单个实例的完整 systemctl status
+ioc-manager console scope01       # 接入该实例的 procServ 控制台
 ```
 
 ## 启动调度器
@@ -198,9 +199,15 @@ systemctl enable --now 'epics-ioc@scope02'
 netstat -ltnp | grep -E ':210[0-2][0-9]'       # 控制台 21000（blm）/ 21010 / 21020
 cat /run/epics/scope02.info                   # 运行中 IOC 的 PID 与 endpoint
 
-telnet <板卡IP> 21010                         # scope01 的控制台
-telnet <板卡IP> 21020                         # scope02 的控制台
+ioc-manager console scope01                   # 本机接入控制台（不用记端口）
+telnet <板卡IP> 21010                         # 从其他主机接同一个控制台
+telnet <板卡IP> 21020                         # 从其他主机接 scope02
 ```
+
+`ioc-manager console <实例名>` 从实例 infofile 解析 endpoint（因此固定
+`PS_PORT` 和通配 bind 都能正确处理），再调用镜像里可用的客户端
+（telnet / socat / nc）。procServ 把控制台的**控制权**给第一个接入的客户端，
+后续接入的只能只读查看。
 
 控制台就是运行中 IOC 的 iocsh 提示符（`help`、`dbpr`……）。procServ 以
 one-shot 方式运行：IOC 退出——无论崩溃还是控制台里 `^X`——procServ 都会带着

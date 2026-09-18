@@ -67,7 +67,8 @@ Two aids come with it:
 
 * procServ runs with `-I /run/epics/<instance>.info`, so the running
   server's PID and actual endpoints are on disk; `ioc-ports --show <instance>`
-  prints them.
+  prints them, and `ioc-manager console <instance>` reads the endpoint from
+  there and attaches to it.
 * The console is plain telnet and, with the default
   `PROCSERV_ARGS="--oneshot --allow"`, reachable from any host. `--allow` has
   no short form (`-A` does not exist -- only the long option does), and the

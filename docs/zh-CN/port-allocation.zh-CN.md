@@ -62,7 +62,8 @@ systemctl enable --now 'epics-ioc@<name>'
 两个配套手段：
 
 * procServ 以 `-I /run/epics/<实例>.info` 运行，把运行中服务器的 PID 和实际
-  endpoint 落盘；`ioc-ports --show <实例名>` 会打印出来。
+  endpoint 落盘；`ioc-ports --show <实例名>` 会打印出来，
+  `ioc-manager console <实例名>` 则直接读该 endpoint 接入控制台。
 * 控制台是明文 telnet，默认 `PROCSERV_ARGS="--oneshot --allow"` 时任何主机都能连。
   `--allow` 只有长选项（不存在 `-A` 短选项），且仅靠编译期默认值不会放宽 bind 地址。
   去掉 `--allow` 即只绑本机；也可用防火墙限制 21000 段；procServ 还支持

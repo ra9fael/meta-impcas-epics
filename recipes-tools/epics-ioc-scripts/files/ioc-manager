@@ -24,6 +24,7 @@ usage() {
     echo "  restart <name>   restart one instance"
     echo "  enable <name>    enable auto-start at boot"
     echo "  disable <name>   disable auto-start at boot"
+    echo "  console <name>   attach to its procServ console"
     echo "  startall         start every registered instance"
     echo "  stopall          stop every registered instance"
     exit 2
@@ -68,6 +69,31 @@ unit_state() {
     systemctl "$1" "epics-ioc@$2.service" 2>/dev/null | head -n1
 }
 
+# Console endpoint of an instance, printed as "<host> <port>". The infofile
+# records what procServ actually bound ("pid:<n>", "tcp:<addr>:<port>"), which
+# beats the derived slot port when an instance pins PS_PORT and also covers a
+# server started outside systemd. A wildcard bind (the --allow default) is not
+# connectable, so it maps to loopback. Returns non-zero when nothing runs.
+console_endpoint() {
+    _info="$RUN_DIR/$1.info"
+    if [ -r "$_info" ]; then
+        _endpoint=$(sed -n 's/^tcp:\(.*\):\([0-9][0-9]*\)$/\1 \2/p' "$_info" | head -n 1)
+        _host=${_endpoint%% *}
+        _port=${_endpoint##* }
+        if [ -n "$_port" ]; then
+            case "$_host" in
+                ""|0.0.0.0) _host=127.0.0.1 ;;
+                ::|0:0:0:0:0:0:0:0) _host=::1 ;;
+            esac
+            echo "$_host $_port"
+            return 0
+        fi
+    fi
+    [ "$(unit_state is-active "$1")" = active ] || return 1
+    _slot=$(get_key "$1" IOC_INSTANCE_INDEX)
+    echo "127.0.0.1 $(( PORT_BASE + ${_slot:-0} * 10 ))"
+}
+
 cmd=${1:-}
 [ -n "$cmd" ] || usage
 
@@ -108,6 +134,29 @@ case "$cmd" in
     start|stop|restart|enable|disable)
         [ -n "$2" ] || { echo "usage: $0 $cmd <instance-name>" >&2; exit 2; }
         systemctl "$cmd" "epics-ioc@$2.service"
+        ;;
+    console)
+        [ -n "$2" ] || { echo "usage: $0 console <instance-name>" >&2; exit 2; }
+        [ -r "$ENV_ROOT/$2.env" ] || [ -r "$MACHINE_ENV_ROOT/$2/$2.env" ] || {
+            echo "$0: no registry entry for instance '$2'" >&2
+            exit 1
+        }
+        _endpoint=$(console_endpoint "$2") || {
+            echo "$0: instance $2 is not running (systemctl status epics-ioc@$2)" >&2
+            exit 1
+        }
+        _host=${_endpoint%% *}
+        _port=${_endpoint##* }
+        if command -v telnet >/dev/null 2>&1; then
+            exec telnet "$_host" "$_port"
+        elif command -v socat >/dev/null 2>&1; then
+            exec socat -,raw,echo=0 "TCP:$_host:$_port"
+        elif command -v nc >/dev/null 2>&1; then
+            exec nc "$_host" "$_port"
+        fi
+        echo "$0: no console client found (telnet, socat or nc)" >&2
+        echo "$0: console of $2 is $_host port $_port" >&2
+        exit 1
         ;;
     startall)
         for name in $(entries); do

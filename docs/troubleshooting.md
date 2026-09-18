@@ -162,7 +162,8 @@ systemctl status 'epics-ioc@scope01' --no-pager
 journalctl -u 'epics-ioc@scope01' -n 200
 netstat -ltnp | grep -E ':210[0-2][0-9]'
 cat /run/epics/scope01.info
-telnet <board-ip> 21010          # procServ console -> iocsh prompt
+ioc-manager console scope01       # procServ console -> iocsh prompt
+telnet <board-ip> 21010          # the same console from another host
 ```
 
 The console is the fastest way in: `errlog` output is right there, and

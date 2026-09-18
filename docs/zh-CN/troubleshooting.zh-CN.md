@@ -142,7 +142,8 @@ systemctl status 'epics-ioc@scope01' --no-pager
 journalctl -u 'epics-ioc@scope01' -n 200
 netstat -ltnp | grep -E ':210[0-2][0-9]'
 cat /run/epics/scope01.info
-telnet <板卡IP> 21010          # procServ 控制台 -> iocsh 提示符
+ioc-manager console scope01  # procServ 控制台 -> iocsh 提示符
+telnet <板卡IP> 21010          # 从其他主机接同一个控制台
 ```
 
 控制台是最快的入口：errlog 输出就在眼前，`asynSetTraceMask("L0", 0, 0x321)`
