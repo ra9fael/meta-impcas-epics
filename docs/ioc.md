@@ -211,11 +211,11 @@ the service's cgroup, so systemd stops it together with the IOC.
 systemctl is-enabled 'epics-ioc@scope01'      # disabled: installed, not enabled
 systemctl enable --now 'epics-ioc@scope01'
 systemctl enable --now 'epics-ioc@scope02'
-ss -ltnp | grep -E '2100[01]|2101[01]'        # consoles 21000 / 21010
+ss -ltnp | grep -E '2100[0-9]|2101[0-9]'       # consoles 21000 (blm) / 21010 / 21020
 cat /run/epics/scope02.info                   # PID and endpoints of the running IOC
 
-telnet <board-ip> 21000                       # console of scope01
-telnet <board-ip> 21010                       # console of scope02
+telnet <board-ip> 21010                       # console of scope01
+telnet <board-ip> 21020                       # console of scope02
 ```
 
 The console is an iocsh prompt for the running IOC (`help`, `dbpr`, ...).
@@ -309,11 +309,15 @@ printf '[Service]\nRestart=always\nRestartSec=5s\n' \
 systemctl daemon-reload && systemctl restart epics-ioc@blm
 ```
 
-Two pitfalls: `scope01` and `blm` both ship with slot 0, so starting both on
-one board collides on console port 21000 -- edit
-`/etc/epics/instances/scope01.env` first (which tests a manual registry edit
-as a bonus); and `petalinux-build` needs the network for AUTOREV, so on a
-flaky proxy switch the BLM recipe to its local `file://` SRC_URI block.
+One pitfall is worth knowing before it bites. Two instances must never share a
+slot: slot 0 belongs to the fleet BLM IOC and the example instances use 1 and
+2, and `ioc-ports --audit` reports collisions across both registry layers. A
+slot conflict surfaces as `procServ: Exiting with error code: 98` next to a
+misleading `Bad file descriptor` in the journal -- 98 is `EADDRINUSE`, and the
+`perror` text comes from procServ clobbering `errno` while unwinding.
+
+The other is a build one: `petalinux-build` needs the network for AUTOREV, so
+on a flaky proxy switch the BLM recipe to its local `file://` SRC_URI block.
 
 ## Why the classes do what they do
 

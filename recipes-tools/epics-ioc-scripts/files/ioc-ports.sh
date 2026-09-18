@@ -56,7 +56,7 @@ _ioc_ports_env_files() {
     # image and the optional machine-level overrides on the BOOT partition.
     # A console port collides across layers just as it does within one, so
     # both are scanned.
-    for _f in "$ENV_ROOT"/*.env "$MACHINE_ENV_ROOT"/*.env; do
+    for _f in "$ENV_ROOT"/*.env "$MACHINE_ENV_ROOT"/*/*.env; do
         [ -e "$_f" ] || continue
         echo "$_f"
     done

@@ -68,11 +68,13 @@ Two aids come with it:
 * procServ runs with `-I /run/epics/<instance>.info`, so the running
   server's PID and actual endpoints are on disk; `ioc-ports --show <instance>`
   prints them.
-* The console is plain telnet and, with the default `PROCSERV_ARGS="-A --oneshot"`,
-  reachable from any host. Restrict it per instance (`PROCSERV_ARGS="-r"` binds
-  localhost only) or with a firewall over the 21000 range; procServ can also
-  serve the console on a UNIX domain socket (`unix:/path` endpoint) if no TCP
-  port should be used at all.
+* The console is plain telnet and, with the default
+  `PROCSERV_ARGS="--oneshot --allow"`, reachable from any host. `--allow` has
+  no short form (`-A` does not exist -- only the long option does), and the
+  compile-time default alone does not widen the bind. Drop `--allow` to bind
+  localhost only, or restrict it with a firewall over the 21000 range;
+  procServ can also serve the console on a UNIX domain socket
+  (`unix:/path` endpoint) if no TCP port should be used at all.
 
 ## CA and PVA (dynamic, optionally pinned)
 

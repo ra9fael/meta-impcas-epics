@@ -29,10 +29,12 @@ EPICS_IOC_ENV_ROOT ?= "/etc/epics/instances"
 EPICS_IOC_MACHINE_ENV_ROOT ?= "/boot/iocs"
 EPICS_IOC_PORT_BASE ?= "21000"
 EPICS_IOC_RUN_DIR ?= "/run/epics"
-# Restart policy stays with systemd (--oneshot). Do not use procServ short
-# options beyond the documented set here: upstream procServ has no -A short
-# option (only the long-only --allow) and the board would fail to start.
-PROCSERV_ARGS ?= "--oneshot"
+# Restart policy stays with systemd (--oneshot). The console listener also
+# needs --allow to be reachable from other hosts: it is a long-only option
+# (there is no -A short form) and the compile-time default alone does not
+# widen the bind. Remove --allow to serve the console on localhost only, and
+# see docs/port-allocation.md before adding anything else here.
+PROCSERV_ARGS ?= "--oneshot --allow"
 
 SYSTEMD_PACKAGES = "${PN}"
 SYSTEMD_SERVICE:${PN} = "epics-ioc@.service"

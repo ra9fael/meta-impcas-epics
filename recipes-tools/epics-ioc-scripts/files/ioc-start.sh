@@ -7,8 +7,8 @@
 # epics-ioc@.service template. The instance name selects an entry in the
 # instance registry:
 #
-#   /etc/epics/instances/<name>.env   fleet layer, shipped in the image
-#   /boot/iocs/<name>.env             machine layer, optional, overrides
+#   /etc/epics/instances/<name>.env      fleet layer, shipped in the image
+#   /boot/iocs/<name>/<name>.env         machine layer, optional, overrides
 #
 # The registry entry points at the IOC application directory and carries the
 # instance identity (console slot, PV prefix, state directory, optional
@@ -107,6 +107,24 @@ if [ -n "$IOC_APP_NAME" ]; then
 else
     set -- "./${IOC_ST_CMD:-st.cmd}"
 fi
+
+# procServ reports a console port that is already taken as "Bad file
+# descriptor" plus a bare errno number, which names neither the port nor the
+# owner. Every running server leaves its PID and endpoints in
+# <RUN_DIR>/<instance>.info ("pid:<n>", "tcp:<addr>:<port>"), so the
+# conflicting instance can be named before procServ is even started. Warning
+# only: procServ stays the authority on whether the bind succeeds.
+console_port_conflict_warn() {
+    for _f in "$RUN_DIR"/*.info; do
+        [ -f "$_f" ] || continue
+        grep -q "tcp:[^:]*:$PS_PORT\$" "$_f" || continue
+        _pid=$(sed -n 's/^pid:\([0-9][0-9]*\).*/\1/p' "$_f" | head -n 1)
+        echo "$0: warning: console port $PS_PORT is already served by instance" \
+             "$(basename "$_f" .info) (pid ${_pid:-unknown})" >&2
+        echo "$0: warning: two instances must not share a slot; run 'ioc-manager report'" >&2
+    done
+}
+console_port_conflict_warn
 
 # -I makes procServ record PID and endpoints, so the running instance can be
 # found without knowing the port in advance. --oneshot (in PROCSERV_ARGS)
