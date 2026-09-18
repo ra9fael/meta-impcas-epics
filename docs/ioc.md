@@ -211,7 +211,7 @@ the service's cgroup, so systemd stops it together with the IOC.
 systemctl is-enabled 'epics-ioc@scope01'      # disabled: installed, not enabled
 systemctl enable --now 'epics-ioc@scope01'
 systemctl enable --now 'epics-ioc@scope02'
-ss -ltnp | grep -E '2100[0-9]|2101[0-9]'       # consoles 21000 (blm) / 21010 / 21020
+netstat -ltnp | grep -E ':210[0-2][0-9]'      # consoles 21000 (blm) / 21010 / 21020
 cat /run/epics/scope02.info                   # PID and endpoints of the running IOC
 
 telnet <board-ip> 21010                       # console of scope01

@@ -132,6 +132,19 @@ files; `--next` picks the first free slot. An explicit `PS_PORT` in an instance
 env file overrides the derived one, which is the usual source of an accidental
 collision.
 
+How it shows up on the target: `procServ: Exiting with error code: 98` with a
+misleading `Bad file descriptor` printed next to it. 98 is `EADDRINUSE`, and
+the `perror` text is `errno` clobbered while the exception unwinds -- read the
+number, not the words. `ioc-start.sh` names the owning instance and PID before
+starting whenever another infofile already serves that console port.
+
+The holder is not necessarily a current instance: a board whose rootfs was
+updated in place instead of reflashed from scratch keeps units from an older
+image together with their `.wants` symlinks, and those start at boot and take
+the ports (observed with `epics-asyn-scope-ioc@ioc0.service` holding 21000).
+`systemctl list-units --all | grep -i ioc` shows them; disable and delete the
+leftovers, or reflash the rootfs partition from scratch.
+
 ### A client cannot reach one specific IOC
 
 Same-subnet clients need no configuration: every IOC receives the broadcast
@@ -147,9 +160,9 @@ selector.
 ```bash
 systemctl status 'epics-ioc@scope01' --no-pager
 journalctl -u 'epics-ioc@scope01' -n 200
-ss -ltnp | grep -E '2100[01]|2101[01]'
+netstat -ltnp | grep -E ':210[0-2][0-9]'
 cat /run/epics/scope01.info
-telnet <board-ip> 21000          # procServ console -> iocsh prompt
+telnet <board-ip> 21010          # procServ console -> iocsh prompt
 ```
 
 The console is the fastest way in: `errlog` output is right there, and

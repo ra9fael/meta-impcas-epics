@@ -195,7 +195,7 @@ procServ 本身。`ioc-start.sh <实例名>` 依次：
 systemctl is-enabled 'epics-ioc@scope01'      # disabled：已安装，未启用
 systemctl enable --now 'epics-ioc@scope01'
 systemctl enable --now 'epics-ioc@scope02'
-ss -ltnp | grep -E '2100[0-9]|2101[0-9]'       # 控制台 21000（blm）/ 21010 / 21020
+netstat -ltnp | grep -E ':210[0-2][0-9]'       # 控制台 21000（blm）/ 21010 / 21020
 cat /run/epics/scope02.info                   # 运行中 IOC 的 PID 与 endpoint
 
 telnet <板卡IP> 21010                         # scope01 的控制台

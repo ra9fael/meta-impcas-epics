@@ -114,8 +114,11 @@ fi
 # <RUN_DIR>/<instance>.info ("pid:<n>", "tcp:<addr>:<port>"), so the
 # conflicting instance can be named before procServ is even started. Warning
 # only: procServ stays the authority on whether the bind succeeds.
+# The infofiles of running servers live as <RUN_DIR>/<instance>.info. The
+# extra glob covers a per-application subdirectory layout, which still exists
+# on boards whose rootfs was updated in place from an older image.
 console_port_conflict_warn() {
-    for _f in "$RUN_DIR"/*.info; do
+    for _f in "$RUN_DIR"/*.info "$RUN_DIR"/*/*.info; do
         [ -f "$_f" ] || continue
         grep -q "tcp:[^:]*:$PS_PORT\$" "$_f" || continue
         _pid=$(sed -n 's/^pid:\([0-9][0-9]*\).*/\1/p' "$_f" | head -n 1)

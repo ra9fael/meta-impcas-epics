@@ -116,6 +116,17 @@ caRepeater 单元同一策略：安装不等于启动。用
 扫描注册表两层并报告冲突文件；`--next` 取第一个空闲槽位。实例 env
 文件里显式写的 `PS_PORT` 会覆盖推导值，这是意外冲突最常见的来源。
 
+在 target 上的现象是 `procServ: Exiting with error code: 98` 旁边跟着一句
+误导性的 `Bad file descriptor`。98 是 `EADDRINUSE`，而 `perror` 打印的文字
+是异常栈展开过程中被覆盖的 `errno`——看数字，别看字面。启动前
+`ioc-start.sh` 会扫描 infofile，把已占用该控制台端口的实例名和 PID 打出来。
+
+占用者未必是当前实例：rootfs 若是覆盖更新而非重新烧写，旧镜像的 unit 连同
+其 `.wants` 软链接会留下来，开机即启动并占住端口（实测
+`epics-asyn-scope-ioc@ioc0.service` 占着 21000）。用
+`systemctl list-units --all | grep -i ioc` 查看，禁用并删除残留文件，
+或干脆重新烧写 rootfs 分区。
+
 ### 客户端连不上某一个特定的 IOC
 
 同网段客户端无需任何配置：每个 IOC 都会收到广播搜索并以自己的端口应答。某个
@@ -129,9 +140,9 @@ caRepeater 单元同一策略：安装不等于启动。用
 ```bash
 systemctl status 'epics-ioc@scope01' --no-pager
 journalctl -u 'epics-ioc@scope01' -n 200
-ss -ltnp | grep -E '2100[01]|2101[01]'
-cat /run/epics/epics-asyn-scope-ioc/ioc0.info
-telnet <板卡IP> 21000          # procServ 控制台 -> iocsh 提示符
+netstat -ltnp | grep -E ':210[0-2][0-9]'
+cat /run/epics/scope01.info
+telnet <板卡IP> 21010          # procServ 控制台 -> iocsh 提示符
 ```
 
 控制台是最快的入口：errlog 输出就在眼前，`asynSetTraceMask("L0", 0, 0x321)`
