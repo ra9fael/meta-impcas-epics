@@ -100,10 +100,15 @@ module must be listed.
 
 ### The instance is installed but not enabled
 
-The preset only enables the instances a recipe lists in `EPICS_IOC_INSTANCES`
-with `EPICS_IOC_AUTO_ENABLE = "enable"`; everything else is installed but
-off -- the same policy as the caRepeater unit: installing must not start an
-IOC. Start it with `systemctl enable --now 'epics-ioc@<instance>'`. If
+Auto-start comes from the enable symlink
+(`/etc/systemd/system/multi-user.target.wants/epics-ioc@<instance>.service`)
+a recipe ships when it lists the instance in `EPICS_IOC_INSTANCES` with
+`EPICS_IOC_AUTO_ENABLE = "enable"`; everything else is installed but off --
+the same policy as the caRepeater unit: installing must not start an IOC. A
+systemd preset cannot express this: preset-all only walks unit files present
+on disk, and an instance has no file of its own, so a preset line naming it
+is never matched. Start an instance by hand with
+`systemctl enable --now 'epics-ioc@<instance>'`. If
 systemd cannot find the instance, check that
 `/etc/epics/instances/<instance>.env` is in the image and that
 `IOC_APP_DIR`/`IOC_PATH` inside it point at the installed application.

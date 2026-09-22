@@ -13,8 +13,8 @@ Three pieces cooperate:
 * `epics-ioc` (inherits `epics-module`) builds and packages the application.
 * `epics-ioc-systemd` (inherits `epics-ioc`) registers instances: it installs
   each instance's env file into the host-wide registry
-  (`/etc/epics/instances/<name>.env`) and can enable instances through a
-  systemd preset.
+  (`/etc/epics/instances/<name>.env`) and can enable instances at image
+  build time.
 * `epics-ioc-scripts` is the runtime every IOC shares: one generic systemd
   template (`epics-ioc@.service`), the `ioc-start.sh` dispatcher and the
   port-slot helpers. An instance is identified by its host-global name only.
@@ -79,8 +79,8 @@ Variables the classes read:
 | `IOC_PATH`                  | `""`                                 | Directory with `st.cmd`, e.g. `iocBoot/iocmy`. Build-time value. |
 | `IOC_ST_CMD`                | `"st.cmd"`                           | Name of the startup script. Build-time value. |
 | `EPICS_IOC_INSTANCE_ENVS`   | `""`                                 | Registry entries to install, as source paths (basename = instance name). |
-| `EPICS_IOC_INSTANCES`       | `""`                                 | Instances systemd-preset-all enables at image build time. |
-| `EPICS_IOC_AUTO_ENABLE`     | `"disable"`                          | `enable` writes the preset lines for `EPICS_IOC_INSTANCES`. |
+| `EPICS_IOC_INSTANCES`       | `""`                                 | Instances `EPICS_IOC_AUTO_ENABLE` enables at image build time. |
+| `EPICS_IOC_AUTO_ENABLE`     | `"disable"`                          | `enable` ships the systemd enable symlink for `EPICS_IOC_INSTANCES`. |
 
 `RDEPENDS` must list every module whose library the IOC links; shlibs scanning
 does not see anything under `${EPICS_PREFIX}`, so it cannot work them out.

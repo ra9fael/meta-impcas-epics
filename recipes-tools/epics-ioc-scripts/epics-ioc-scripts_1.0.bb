@@ -38,7 +38,12 @@ PROCSERV_ARGS ?= "--oneshot --allow"
 
 SYSTEMD_PACKAGES = "${PN}"
 SYSTEMD_SERVICE:${PN} = "epics-ioc@.service"
-SYSTEMD_AUTO_ENABLE:${PN} = "disable"
+# "preset", not "disable": the template is shared by every IOC instance, so a
+# generated `disable epics-ioc@.service` preset would let any later
+# `systemctl preset` run (package postinst, an operator's preset-all) delete
+# the enable symlinks other recipes shipped for their own instances.
+# Instances are off by default simply because nothing enables them.
+SYSTEMD_AUTO_ENABLE:${PN} = "preset"
 
 do_install() {
     install -d ${D}${libexecdir}/epics-ioc ${D}${bindir} ${D}${systemd_system_unitdir}

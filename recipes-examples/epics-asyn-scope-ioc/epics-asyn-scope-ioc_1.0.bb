@@ -37,6 +37,9 @@ IOC_PATH = "iocBoot/ioctestAsynPortDriver"
 # Two instances in the host-wide registry; both are installed but stay off
 # until the operator enables them (dev-board example IOC, not a fleet unit).
 EPICS_IOC_INSTANCE_ENVS = "${WORKDIR}/instances/scope01.env ${WORKDIR}/instances/scope02.env"
+# Spelled out rather than left to the class default: this recipe is the
+# example every new IOC is copied from, and it must never auto-start.
+EPICS_IOC_AUTO_ENABLE = "disable"
 
 do_configure:append() {
     # Keep only what this IOC builds. Everything else -- the asyn library

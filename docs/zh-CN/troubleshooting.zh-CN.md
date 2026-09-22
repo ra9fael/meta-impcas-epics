@@ -88,10 +88,13 @@ asyn 的 `-DHAVE_DEVINT64` 这类特性宏是模块 Makefile 用 `+=` 加的。�
 
 ### 实例装上了但没有启用
 
-preset 只启用 recipe 里 `EPICS_IOC_INSTANCES` 与
-`EPICS_IOC_AUTO_ENABLE = "enable"` 列出的实例；其余只安装、不启动——与
-caRepeater 单元同一策略：安装不等于启动。用
-`systemctl enable --now 'epics-ioc@<实例名>'` 启动。如果 systemd 找不到该
+自启动来自带包安装的 enable 符号链接
+（`/etc/systemd/system/multi-user.target.wants/epics-ioc@<实例名>.service`）：
+recipe 里 `EPICS_IOC_INSTANCES` 与 `EPICS_IOC_AUTO_ENABLE = "enable"` 同时
+列出了该实例时才会带上；其余只安装、不启动——与 caRepeater 单元同一策略：
+安装不等于启动。systemd preset 表达不了这件事：preset-all 只遍历磁盘上真实
+存在的 unit 文件，而实例没有自己的文件，点名实例的 preset 行永远不会被匹配。
+手工启动用 `systemctl enable --now 'epics-ioc@<实例名>'`。如果 systemd 找不到该
 实例，检查 `/etc/epics/instances/<实例名>.env` 是否在镜像里，以及其中的
 `IOC_APP_DIR`/`IOC_PATH` 是否指向已安装的应用。
 

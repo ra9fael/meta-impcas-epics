@@ -12,8 +12,7 @@ IOC 可执行文件和 `.dbd` 的 `*App/src`、放记录的 `*App/Db`，以及�
 
 * `epics-ioc`（继承 `epics-module`）构建并打包应用。
 * `epics-ioc-systemd`（继承 `epics-ioc`）注册实例：把每个实例的 env 文件装进
-  全机实例注册表（`/etc/epics/instances/<name>.env`），并可通过 systemd preset
-  启用实例。
+  全机实例注册表（`/etc/epics/instances/<name>.env`），并可在镜像构建时启用实例。
 * `epics-ioc-scripts` 是所有 IOC 共用的运行时：一个通用 systemd 模板
   （`epics-ioc@.service`）、`ioc-start.sh` 调度器和端口槽位辅助脚本。实例只由
   它的全机唯一名字标识。
@@ -72,8 +71,8 @@ class 会读取的变量：
 | `IOC_PATH`                  | `""`                                 | `st.cmd` 所在目录，如 `iocBoot/iocmy`。 |
 | `IOC_ST_CMD`                | `"st.cmd"`                           | 启动脚本名。 |
 | `EPICS_IOC_INSTANCE_ENVS`   | `""`                                 | 要安装的注册表条目（源码路径，basename = 实例名）。 |
-| `EPICS_IOC_INSTANCES`       | `""`                                 | 镜像构建时由 systemd-preset-all 启用的实例。 |
-| `EPICS_IOC_AUTO_ENABLE`     | `"disable"`                          | `enable` 时为 `EPICS_IOC_INSTANCES` 写 preset 行。 |
+| `EPICS_IOC_INSTANCES`       | `""`                                 | 镜像构建时由 `EPICS_IOC_AUTO_ENABLE` 启用的实例。 |
+| `EPICS_IOC_AUTO_ENABLE`     | `"disable"`                          | `enable` 时为 `EPICS_IOC_INSTANCES` 装上 systemd enable 符号链接。 |
 
 IOC 链接到的每个模块都必须写进 `RDEPENDS`：shlibs 扫描看不到
 `${EPICS_PREFIX}` 下的内容，推不出来。
