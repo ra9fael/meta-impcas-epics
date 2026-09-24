@@ -313,12 +313,21 @@ Two negative tests are worth running once per image:
 * **Machine overrides and the host guard.** Put `IOC_HOST=other-machine` in
   `/boot/iocs/blm/blm.env` and restart the unit: it must refuse to start with
   the pinned-host message. Fix the name, restart, done.
-* **A failed bitstream load must stop the IOC.** Put two `.bit.bin` files in
-  `/boot/fpga` without `active.conf` and reboot: `fpgacfg` fails listing the
-  candidates, and `epics-ioc@blm` stays down because it *requires* fpgacfg
-  -- publishing interlock data from an unconfigured PL would be worse. An
-  empty or missing `/boot/fpga` is the opposite case: fpgacfg succeeds as a
-  no-op and the IOC starts.
+* **The PL must be verifiably configured.** Two cases, same requirement from
+  different directions:
+  - *A failed bitstream load must stop the IOC.* Put two `.bit.bin` files in
+    `/boot/fpga` without `active.conf` and reboot: `fpgacfg` fails listing the
+    candidates, and `epics-ioc@blm` stays down because it *requires* fpgacfg
+    -- publishing interlock data from an unconfigured PL would be worse.
+  - *An empty pool must stop the IOC too.* Remove every `*.bin` from
+    `/boot/fpga` and reboot: `fpgacfg` succeeds as a no-op ("nothing to
+    load") -- an exit code cannot distinguish that from a real load -- but
+    it leaves no `/run/fpgacfg.loaded` credential, and `epics-ioc@blm` is
+    skipped by its `ConditionPathExists`. Starting the IOC there would let
+    the driver read a PL address no bitstream drives, which wedges the NoC
+    and hangs the machine. On a board whose PL is configured from BOOT.BIN,
+    declare it with the marker `/boot/fpga/preconfigured` and fpgacfg
+    writes the credential on the FSBL's behalf.
 
 An instance that should self-heal opts in explicitly:
 
