@@ -27,19 +27,37 @@ if [ -z "$INSTANCE" ] || case "$INSTANCE" in *[!a-z0-9-]*) true ;; *) false ;; e
     exit 2
 fi
 
+# The machine layer of the registry lives on the FAT BOOT partition, which is
+# the part of the card someone without shell access can edit -- from Windows,
+# where Notepad ends every line with CR. A plain `.` there folds the CR into
+# every value: an invisible suffix on P (so no client can match the record
+# names) and a port number that will not parse. Source a CR-free copy instead
+# and say so, so the journal names the file that needs fixing.
+load_env() {
+    if grep -q "$(printf '\r')" "$1"; then
+        echo "$0: warning: $1 has CRLF line endings (edited on Windows?), stripping CR" >&2
+        _src=/tmp/ioc-env.$$.conf
+        tr -d '\r' < "$1" > "$_src"
+        trap 'rm -f "$_src"' 0
+        . "$_src"
+    else
+        . "$1"
+    fi
+}
+
 [ -r "$ENV_ROOT/$INSTANCE.env" ] || {
     echo "$0: no registry entry $ENV_ROOT/$INSTANCE.env" >&2
     echo "$0: create one with ioc-instance-add $INSTANCE" >&2
     exit 1
 }
-. "$ENV_ROOT/$INSTANCE.env"
+load_env "$ENV_ROOT/$INSTANCE.env"
 
 # Machine-level overrides (site config on the writable BOOT partition), last
 # one wins: P, R, IOC_STATE, CA_PORT/PVA_PORT, PS_PORT, APP_PORT_1/2. Note
 # that inside the IOC an envPaths epicsEnvSet outranks these environment
 # values (it runs later, from st.cmd).
 if [ -r "$MACHINE_ENV_ROOT/$INSTANCE/$INSTANCE.env" ]; then
-    . "$MACHINE_ENV_ROOT/$INSTANCE/$INSTANCE.env"
+    load_env "$MACHINE_ENV_ROOT/$INSTANCE/$INSTANCE.env"
 fi
 
 for key in IOC_APP_DIR IOC_PATH; do
