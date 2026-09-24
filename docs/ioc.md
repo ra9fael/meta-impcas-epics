@@ -172,10 +172,23 @@ ioc-manager stop blm              # stop one instance
 ioc-manager restart blm           # restart one instance
 ioc-manager enable blm            # enable auto-start at boot
 ioc-manager disable blm           # disable auto-start at boot
-ioc-manager startall | stopall    # start/stop every instance
+ioc-manager startall | stopall | restartall
 ioc-manager status scope01        # full systemctl status for one instance
 ioc-manager console scope01       # attach to its procServ console
+ioc-manager logs blm -f           # journal of one instance (no name: all);
+                                  # -n N lines, -- passes args to journalctl
+ioc-manager show blm              # merged registry entry, layer per key
+ioc-manager doctor                # cross-check registry, systemd, runtime
+ioc-manager wait blm 120          # block until active and console bound
 ```
+
+`doctor` reports, not manages: missing application directories, `IOC_HOST`
+pins that no longer match this machine, slot collisions, enabled-but-not
+running and running-but-unregistered instances, and stale `$RUN_DIR`
+console infofiles. `wait` is for boot and acceptance scripts: it returns 0
+only once the unit is active *and* procServ has written the instance
+infofile (the console bound means the IOC process is alive), and exits 1 on
+a failed unit or timeout.
 
 ## The start dispatcher
 

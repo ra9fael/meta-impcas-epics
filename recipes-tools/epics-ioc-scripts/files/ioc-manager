@@ -25,8 +25,16 @@ usage() {
     echo "  enable <name>    enable auto-start at boot"
     echo "  disable <name>   disable auto-start at boot"
     echo "  console <name>   attach to its procServ console"
+    echo "  logs [name] [-n N] [-f]"
+    echo "                   journald log of one instance, or of all when"
+    echo "                   omitted; options after -- go to journalctl"
+    echo "  show <name>      merged registry entry, with the layer of each key"
+    echo "  doctor           cross-check registry, systemd and the runtime"
+    echo "  wait <name> [timeout]"
+    echo "                   block until the instance is up (default 60 s)"
     echo "  startall         start every registered instance"
     echo "  stopall          stop every registered instance"
+    echo "  restartall       restart every registered instance"
     exit 2
 }
 
@@ -99,11 +107,12 @@ cmd=${1:-}
 
 case "$cmd" in
     list)
-        printf "%-16s %-8s %-10s %s\n" INSTANCE LAYER ENABLED ACTIVE
+        printf "%-16s %-8s %-6s %-10s %s\n" INSTANCE LAYER SLOT ENABLED ACTIVE
         registry_entries | while read -r name layer; do
             enabled=$(unit_state is-enabled "$name")
             active=$(unit_state is-active "$name")
-            printf "%-16s %-8s %-10s %s\n" "$name" "$layer" "${enabled:--}" "${active:-inactive}"
+            slot=$(get_key "$name" IOC_INSTANCE_INDEX)
+            printf "%-16s %-8s %-6s %-10s %s\n" "$name" "$layer" "${slot:--}" "${enabled:--}" "${active:-inactive}"
         done
         ;;
     report)
@@ -158,16 +167,160 @@ case "$cmd" in
         echo "$0: console of $2 is $_host port $_port" >&2
         exit 1
         ;;
-    startall)
-        for name in $(entries); do
-            echo "starting $name"
-            systemctl start "epics-ioc@$name.service"
+    logs)
+        shift
+        _name="" _lines=200 _follow=""
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                -n) [ $# -ge 2 ] || { echo "logs: -n needs a value" >&2; exit 2; }
+                    _lines=$2; shift ;;
+                -f) _follow=1 ;;
+                --) shift; break ;;
+                -*) echo "logs: unknown option $1 (use -- to reach journalctl)" >&2; exit 2 ;;
+                *) [ -z "$_name" ] && _name=$1 ;;
+            esac
+            shift
+        done
+        if [ -n "$_name" ]; then
+            # An unregistered name is deliberately still queried: journald
+            # keeps the journal of an instance whose entry was removed.
+            _units="-u epics-ioc@$_name.service"
+        else
+            _units=""
+            for _e in $(entries); do
+                _units="$_units -u epics-ioc@$_e.service"
+            done
+            [ -n "$_units" ] || { echo "logs: no instances registered" >&2; exit 1; }
+        fi
+        # $_units is split on purpose; instance names are [a-z0-9-].
+        exec journalctl $_units -n "$_lines" ${_follow:+-f} "$@"
+        ;;
+    show)
+        [ -n "$2" ] || { echo "usage: $0 show <instance-name>" >&2; exit 2; }
+        _fleet="$ENV_ROOT/$2.env"
+        _mach="$MACHINE_ENV_ROOT/$2/$2.env"
+        if [ ! -r "$_fleet" ] && [ ! -r "$_mach" ]; then
+            echo "$0: no registry entry for instance '$2'" >&2
+            exit 1
+        fi
+        _keys=$(
+            { [ -r "$_fleet" ] && sed -n 's/^[[:space:]]*\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$_fleet"
+              [ -r "$_mach" ] && sed -n 's/^[[:space:]]*\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$_mach"; } | sort -u
+        )
+        printf "%-24s %-8s %s\n" KEY LAYER VALUE
+        for _k in $_keys; do
+            _v="" _l=-
+            for _f in "$_fleet" "$_mach"; do
+                [ -r "$_f" ] || continue
+                _fv=$(sed -n "s/^[[:space:]]*$_k=[[:space:]]*//p" "$_f" | tail -n 1)
+                [ -n "$_fv" ] || continue
+                _v=$_fv
+                if [ "$_f" = "$_mach" ]; then _l=machine; else _l=fleet; fi
+            done
+            printf "%-24s %-8s %s\n" "$_k" "$_l" "$_v"
         done
         ;;
-    stopall)
+    doctor)
+        _rc=0
+        _names=$(entries)
+        [ -n "$_names" ] || { echo "no instances registered"; exit 0; }
+        _slotmap=""
+        for _name in $_names; do
+            _app=$(get_key "$_name" IOC_APP_DIR)
+            _path=$(get_key "$_name" IOC_PATH)
+            if [ -z "$_app" ] || [ -z "$_path" ]; then
+                printf 'FAIL  %-16s entry lacks IOC_APP_DIR or IOC_PATH\n' "$_name"
+                _rc=1
+                continue
+            fi
+            [ -d "$_app/$_path" ] || {
+                printf 'FAIL  %-16s application directory %s/%s missing\n' \
+                       "$_name" "$_app" "$_path"
+                _rc=1
+            }
+            _host=$(get_key "$_name" IOC_HOST)
+            if [ -n "$_host" ] && [ "$_host" != "$(hostname -s)" ] && [ "$_host" != "$(hostname -f)" ]; then
+                printf 'FAIL  %-16s pinned to IOC_HOST=%s, this host is %s\n' \
+                       "$_name" "$_host" "$(hostname -s)"
+                _rc=1
+            fi
+            case $(unit_state is-active "$_name") in
+                active) : ;;
+                failed)
+                    printf 'WARN  %-16s unit failed -- ioc-manager logs %s\n' "$_name" "$_name"
+                    _rc=1 ;;
+                *)
+                    [ "$(unit_state is-enabled "$_name")" = enabled ] && {
+                        printf 'WARN  %-16s enabled but not running\n' "$_name"
+                        _rc=1
+                    } ;;
+            esac
+            _slot=$(get_key "$_name" IOC_INSTANCE_INDEX)
+            [ -n "$_slot" ] && _slotmap="$_slotmap$_slot $_name
+"
+        done
+        for _d in $(printf '%s' "$_slotmap" | cut -d' ' -f1 | sort | uniq -d); do
+            printf 'FAIL  slot %s claimed by multiple instances: %s\n' \
+                   "$_d" "$(printf '%s' "$_slotmap" | sed -n "s/^$_d //p" | tr '\n' ' ')"
+            _rc=1
+        done
+        # A unit that is running without a registry entry can only have been
+        # started outside the runtime (or its entry was deleted under it).
+        for _u in $(systemctl list-units --plain --no-legend \
+                        --state=active --type=service 'epics-ioc@*.service' 2>/dev/null \
+                        | sed -n 's/^epics-ioc@\([^.]*\)\.service.*/\1/p'); do
+            case " $_names " in
+                *" $_u "*) : ;;
+                *) printf 'WARN  %-16s active but has no registry entry\n' "$_u"; _rc=1 ;;
+            esac
+        done
+        for _f in "$RUN_DIR"/*.info; do
+            [ -f "$_f" ] || continue
+            _pid=$(sed -n 's/^pid:\([0-9][0-9]*\)$/\1/p' "$_f" | head -n 1)
+            [ -n "$_pid" ] && [ ! -d "/proc/$_pid" ] &&
+                printf 'WARN  %-16s stale console infofile %s (pid %s is gone)\n' \
+                       "$(basename "$_f" .info)" "$_f" "$_pid"
+        done
+        [ "$_rc" = 0 ] && echo "doctor: all checks passed"
+        exit $_rc
+        ;;
+    wait)
+        [ -n "$2" ] || { echo "usage: $0 wait <instance-name> [timeout-seconds]" >&2; exit 2; }
+        _timeout=${3:-60}
+        [ "$_timeout" -eq "$_timeout" ] 2>/dev/null || { echo "wait: timeout must be a number" >&2; exit 2; }
+        [ -r "$ENV_ROOT/$2.env" ] || [ -r "$MACHINE_ENV_ROOT/$2/$2.env" ] || {
+            echo "$0: no registry entry for instance '$2'" >&2
+            exit 1
+        }
+        _deadline=$(( $(date +%s) + _timeout ))
+        # "up" is unit-active AND the procServ infofile present: the infofile
+        # is written when the console binds, i.e. after the IOC process lives.
+        while :; do
+            _st=$(unit_state is-active "$2")
+            [ "$_st" = failed ] && {
+                echo "wait: $2 failed to start (ioc-manager logs $2)" >&2
+                exit 1
+            }
+            if [ "$_st" = active ] && [ -r "$RUN_DIR/$2.info" ]; then
+                echo "$2 is up"
+                exit 0
+            fi
+            [ "$(date +%s)" -ge "$_deadline" ] && {
+                echo "wait: $2 not up after ${_timeout}s (state: ${_st:-unknown})" >&2
+                exit 1
+            }
+            sleep 1
+        done
+        ;;
+    startall|stopall|restartall)
+        case "$cmd" in
+            startall) _scmd=start; _verb=starting ;;
+            stopall) _scmd=stop; _verb=stopping ;;
+            *) _scmd=restart; _verb=restarting ;;
+        esac
         for name in $(entries); do
-            echo "stopping $name"
-            systemctl stop "epics-ioc@$name.service"
+            echo "$_verb $name"
+            systemctl "$_scmd" "epics-ioc@$name.service"
         done
         ;;
     help|-h|--help)

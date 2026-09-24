@@ -157,10 +157,20 @@ ioc-manager stop blm              # 停止单个实例
 ioc-manager restart blm           # 重启单个实例
 ioc-manager enable blm            # 开机自启
 ioc-manager disable blm           # 取消开机自启
-ioc-manager startall | stopall
+ioc-manager startall | stopall | restartall
 ioc-manager status scope01        # 单个实例的完整 systemctl status
 ioc-manager console scope01       # 接入该实例的 procServ 控制台
+ioc-manager logs blm -f           # 单个实例的 journal（不带名字则合并全部）；
+                                  # -n N 行数，-- 之后的参数透传给 journalctl
+ioc-manager show blm              # 合并后的注册表条目，逐键标注来源层
+ioc-manager doctor                # 注册表 / systemd / 运行时三方对账
+ioc-manager wait blm 120          # 阻塞到 active 且控制台已绑定
 ```
+
+`doctor` 只报告不修改：应用目录缺失、`IOC_HOST` 与本机不符、槽位冲突、
+"已 enable 但未运行"和"在运行但无注册条目"的实例、`$RUN_DIR` 里残留的
+控制台 infofile。`wait` 面向开机脚本和验收：unit active 且 procServ 已写出
+实例 infofile（控制台绑定成功即 IOC 进程存活）才返回 0，failed 或超时返回 1。
 
 ## 启动调度器
 
