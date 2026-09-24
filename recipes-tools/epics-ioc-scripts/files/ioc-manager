@@ -65,7 +65,9 @@ get_key() {
     _v=""
     for _f in "$ENV_ROOT/$1.env" "$MACHINE_ENV_ROOT/$1/$1.env"; do
         [ -f "$_f" ] || continue
-        _val=$(sed -n "s/^[[:space:]]*$2=[[:space:]]*//p" "$_f" | tail -n 1)
+        # The machine layer is FAT and may have been saved by a Windows
+        # editor; drop CR so a value reads the same from either layer.
+        _val=$(sed -n "s/^[[:space:]]*$2=[[:space:]]*//p" "$_f" | tr -d '\r' | tail -n 1)
         [ -n "$_val" ] && _v=$_val
     done
     echo "$_v"
@@ -244,7 +246,30 @@ case "$cmd" in
                        "$_name" "$_host" "$(hostname -s)"
                 _rc=1
             fi
-            case $(unit_state is-active "$_name") in
+            # An entry with no P leaves the record prefix undefined: where
+            # the IOC expands $(P) inside a dbLoadRecords macro set the name
+            # loses its prefix, where it expands ${P} from the iocsh
+            # environment the literal "${P}" ends up in the name. Neither
+            # stops the IOC from starting, so check it here.
+            [ -n "$(get_key "$_name" P)" ] || {
+                printf 'FAIL  %-16s no P in either registry layer, its records cannot be named correctly\n' "$_name"
+                _rc=1
+            }
+            # IOC_STATE is where autosave writes. ioc-start.sh creates it, so
+            # a running instance without a writable one means the medium is
+            # read-only (a BOOT partition mounted ro, or missing) and every
+            # save is being dropped in silence.
+            _st=$(unit_state is-active "$_name")
+            if [ "$_st" = active ]; then
+                _state=$(get_key "$_name" IOC_STATE)
+                [ -n "$_state" ] || _state="/var/lib/epics-ioc/$_name"
+                [ -w "$_state" ] || {
+                    printf 'WARN  %-16s state dir %s is absent or not writable -- autosave saves are lost\n' \
+                           "$_name" "$_state"
+                    _rc=1
+                }
+            fi
+            case $_st in
                 active) : ;;
                 failed)
                     printf 'WARN  %-16s unit failed -- ioc-manager logs %s\n' "$_name" "$_name"

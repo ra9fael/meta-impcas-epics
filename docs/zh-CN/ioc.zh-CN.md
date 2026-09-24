@@ -86,8 +86,12 @@ IOC 链接到的每个模块都必须写进 `RDEPENDS`：shlibs 扫描看不到
 纯 `KEY=value` 的 env 文件。注册表分两层，后者覆盖前者：
 
 * `/etc/epics/instances/<name>.env` —— 队级层，由 IOC 包随镜像安装；
-* `/boot/iocs/<name>.env` —— 机器级层，位于可写的 BOOT 分区，用于每台机器的
-  差异化覆盖；多数机器上不存在。
+* `/boot/iocs/<name>/<name>.env` —— 机器级层，位于可写的 BOOT 分区，用于每台
+  机器的差异化覆盖；多数机器上不存在。
+
+部署人员会在 Windows 上编辑机器级层，因此引导链从 `/boot` 读取的每个文件都
+容忍 CRLF 行尾：`ioc-start.sh`、`bootcfg`、`fpgacfg` 都会检测到 CR、给出警告，
+并解析去掉 CR 后的副本。
 
 注册表条目指出应用位置并携带实例身份：
 
@@ -123,13 +127,27 @@ IOC_STATE=/var/lib/asyn-scope-ioc/scope01    # 可写的实例状态目录（aut
 
 实例名被限定为小写 `[a-z0-9-]`（systemd 的 `%i` 和调度器校验都拒绝冒号和
 大写），而且每台机器跑的是同一个镜像，所以它必须处处相同：二十台机器上都是
-`blm`。每台机器唯一不同的恰恰是 PV 前缀，而它完全不进镜像：
+`blm`。每台机器唯一不同的是 PV 前缀；镜像里最多带一个台架默认值，绝不带某台
+机器自己的前缀：
 
-* 像 BLM 这种 `st.cmd` source `/boot` envPaths 的 IOC，`P` 来自
-  `/boot/iocs/iocblm/envPaths` 里的 `epicsEnvSet("P","XRAY:BLM:BD40")`；
 * 一般 IOC 从注册表键 `P`（和 `R`）取值——可选的
   `/boot/iocs/<name>/<name>.env` 机器层可以覆盖。IOC 内部的 envPaths
   `epicsEnvSet` 优先级更高：它在 st.cmd 里更晚执行。
+* BLM IOC 正是围绕这个优先级组织的：它的 recipe 从安装后的 `envPaths` 里删掉
+  `epicsEnvSet("P", ...)` 这一行，把 `AUTOSAVES` 改写成 `$(IOC_STATE)`，并去掉
+  那行 source `/boot/iocs/.../envPaths` 的命令；于是前缀和 autosave 位置都成了
+  普通的注册表键，每台机器只需一个文件：
+
+  ```sh
+  # /boot/iocs/blm/blm.env —— FAT 分区，Windows 上即可编辑
+  P=XRAY:BLM:BD40
+  ```
+
+  目录按实例名而不是按 iocBoot 目录命名：运维要碰的是 `iocs/blm/`。autosave
+  库只保存它拿到的路径，从不自己建目录，所以真正决定落盘介质的是
+  `IOC_STATE`——调度器在 exec procServ 之前就会创建它：本机是
+  `/boot/iocs/blm/autosave`，没有独立 BOOT 分区的机器则是
+  `/var/lib/epics-ioc/blm`。
 
 冒号风格跟随数据库：`.db` 模板里的记录名自带分隔符（`$(P):CH0:...`），所以
 `P` 的值不带尾冒号。
@@ -167,10 +185,12 @@ ioc-manager doctor                # 注册表 / systemd / 运行时三方对账
 ioc-manager wait blm 120          # 阻塞到 active 且控制台已绑定
 ```
 
-`doctor` 只报告不修改：应用目录缺失、`IOC_HOST` 与本机不符、槽位冲突、
-"已 enable 但未运行"和"在运行但无注册条目"的实例、`$RUN_DIR` 里残留的
-控制台 infofile。`wait` 面向开机脚本和验收：unit active 且 procServ 已写出
-实例 infofile（控制台绑定成功即 IOC 进程存活）才返回 0，failed 或超时返回 1。
+`doctor` 只报告不修改：应用目录缺失、`IOC_HOST` 与本机不符、条目没有 `P`
+（记录名丢掉前缀，或者混进字面量 `${P}`）、运行中的实例 `IOC_STATE` 不存在或
+只读（autosave 会无声丢弃每一次保存）、槽位冲突、"已 enable 但未运行"和
+"在运行但无注册条目"的实例、`$RUN_DIR` 里残留的控制台 infofile。`wait` 面向
+开机脚本和验收：unit active 且 procServ 已写出实例 infofile（控制台绑定成功即
+IOC 进程存活）才返回 0，failed 或超时返回 1。
 
 ## 启动调度器
 
@@ -180,7 +200,7 @@ procServ 本身。`ioc-start.sh <实例名>` 依次：
 1. source 站点级值（`epics-ioc-env`：注册表根、`PORT_BASE`、`RUN_DIR`、
    `PROCSERV_ARGS`）；
 2. 加载 `/etc/epics/instances/<实例名>.env`，随后加载可选的
-   `/boot/iocs/<实例名>.env` 机器级覆盖；
+   `/boot/iocs/<实例名>/<实例名>.env` 机器级覆盖；
 3. 检查 `$IOC_APP_DIR/$IOC_PATH` 存在；
 4. 推导控制口和应用口（`ioc-ports.sh`）；
 5. env 固定了 `CA_PORT`/`PVA_PORT` 时，导出

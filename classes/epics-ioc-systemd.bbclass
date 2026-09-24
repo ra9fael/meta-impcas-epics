@@ -6,12 +6,14 @@
 # application and carries the instance identity. Two registry layers exist:
 #
 #   /etc/epics/instances/<name>.env   fleet layer, shipped by IOC packages
-#   /boot/iocs/<name>.env             machine layer, optional, overrides
+#   /boot/iocs/<name>/<name>.env      machine layer, optional, overrides
 #
 # Each entry sets at least IOC_APP_DIR, IOC_PATH and IOC_APP_NAME (where the
 # application lives) plus the identity: IOC_INSTANCE_INDEX (the global
-# console-slot number, console = PORT_BASE + 10 * index), IOC_PREFIX and
-# IOC_STATE; CA_PORT/PVA_PORT/PS_PORT/APP_PORT_1/2 are optional pins.
+# console-slot number, console = PORT_BASE + 10 * index), P (and optionally
+# R) for the record macros, and IOC_STATE, the writable directory the
+# dispatcher creates and autosave saves into;
+# CA_PORT/PVA_PORT/PS_PORT/APP_PORT_1/2 are optional pins.
 # See docs/port-allocation.md.
 #
 # This class registers the packaged instances and, for the instances a recipe

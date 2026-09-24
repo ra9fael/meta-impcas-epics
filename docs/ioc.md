@@ -98,6 +98,10 @@ entry -- a plain `KEY=value` env file. Two layers exist, later wins:
 * `/boot/iocs/<name>/<name>.env` -- the machine layer on the writable BOOT
   partition, for per-machine overrides; absent on most machines.
 
+Deployment staff edit that layer from Windows, so every file the boot chain
+reads off `/boot` tolerates CRLF line endings: `ioc-start.sh`, `bootcfg` and
+`fpgacfg` all detect the CR, warn, and parse the stripped copy.
+
 The registry entry points at the application and carries the identity:
 
 ```sh
@@ -133,16 +137,30 @@ The instance name and the PV prefix are two unrelated identities:
 The instance name is constrained to lowercase `[a-z0-9-]` (systemd's `%i` and
 the dispatcher's validation reject colons and upper case), and since every
 machine runs the same image it must be the same everywhere: `blm` on all
-twenty machines. What differs per machine is exactly the PV prefix, and it
-never enters the image:
+twenty machines. What differs per machine is the PV prefix; the image carries
+at most a bench default for it, never a machine's own:
 
-* an IOC like the BLM one, whose `st.cmd` sources a `/boot` envPaths, takes
-  `P` from `epicsEnvSet("P","XRAY:BLM:BD40")` in
-  `/boot/iocs/iocblm/envPaths`;
 * a generic IOC takes `P` (and `R`) from the registry keys -- which the
   optional `/boot/iocs/<name>/<name>.env` machine layer overrides. Inside the
   IOC an envPaths `epicsEnvSet` outranks the environment: it runs later, from
   st.cmd.
+* the BLM IOC is built around exactly that precedence. Its recipe deletes the
+  `epicsEnvSet("P", ...)` line from the installed `envPaths`, rewrites
+  `AUTOSAVES` to `$(IOC_STATE)` and drops the line that sourced a
+  `/boot/iocs/.../envPaths`, so the prefix and the autosave location are both
+  ordinary registry keys and one file per machine is enough:
+
+  ```sh
+  # /boot/iocs/blm/blm.env -- FAT, editable from Windows
+  P=XRAY:BLM:BD40
+  ```
+
+  Named after the instance, not after the iocBoot directory: the folder an
+  operator touches is `iocs/blm/`. The autosave library only ever stores the
+  path it is given and never makes a directory, so `IOC_STATE` -- which the
+  dispatcher creates before exec'ing procServ -- is what puts saves on
+  writable media: `/boot/iocs/blm/autosave` on this board,
+  `/var/lib/epics-ioc/blm` on a machine with no separate BOOT partition.
 
 Colon style follows the database: the record names in the `.db` templates
 already carry the separator (`$(P):CH0:...`), so `P` values are written
@@ -183,12 +201,14 @@ ioc-manager wait blm 120          # block until active and console bound
 ```
 
 `doctor` reports, not manages: missing application directories, `IOC_HOST`
-pins that no longer match this machine, slot collisions, enabled-but-not
-running and running-but-unregistered instances, and stale `$RUN_DIR`
-console infofiles. `wait` is for boot and acceptance scripts: it returns 0
-only once the unit is active *and* procServ has written the instance
-infofile (the console bound means the IOC process is alive), and exits 1 on
-a failed unit or timeout.
+pins that no longer match this machine, an entry with no `P` (its record names
+lose the prefix, or gain a literal `${P}`), a running instance whose
+`IOC_STATE` is absent or read-only (autosave drops every save in silence),
+slot collisions, enabled-but-not running and running-but-unregistered
+instances, and stale `$RUN_DIR` console infofiles. `wait` is for boot and
+acceptance scripts: it returns 0 only once the unit is active *and* procServ
+has written the instance infofile (the console bound means the IOC process is
+alive), and exits 1 on a failed unit or timeout.
 
 ## The start dispatcher
 
@@ -198,7 +218,7 @@ is a script, not procServ directly. `ioc-start.sh <instance>`:
 1. sources the site values (`epics-ioc-env`: registry roots, `PORT_BASE`,
    `RUN_DIR`, `PROCSERV_ARGS`),
 2. loads `/etc/epics/instances/<instance>.env`, then the optional
-   `/boot/iocs/<instance>.env` machine overrides,
+   `/boot/iocs/<instance>/<instance>.env` machine overrides,
 3. checks that `$IOC_APP_DIR/$IOC_PATH` exists,
 4. derives the console and application ports (`ioc-ports.sh`),
 5. exports `EPICS_CA_SERVER_PORT` / `EPICS_PVAS_SERVER_PORT` when the entry
@@ -280,11 +300,14 @@ machine's site files on the BOOT partition before the first boot:
 
 ```text
 machine.cfg                    # HOSTNAME / IP / mask / gateway / DNS / NTP
-iocs/iocblm/envPaths       # epicsEnvSet("P","XRAY:BLM:BD40")  <- this machine's prefix
-iocs/iocblm/calibrations/  # optional: ADC calibration files
-fpga/<name>.bit.bin        # optional bitstream pool
-fpga/active.conf           # optional: BITSTREAM=<pool file name>
+iocs/blm/blm.env               # P=XRAY:BLM:BD40  <- this machine's prefix
+iocs/blm/calibrations/         # optional: ADC calibration files
+fpga/<name>.bit.bin            # optional bitstream pool
+fpga/active.conf               # optional: BITSTREAM=<pool file name>
 ```
+
+`iocs/blm/autosave/` is not on that list: the dispatcher creates it on the
+first start, and an empty one is meaningless to pre-fill.
 
 Then boot and walk the chain:
 
