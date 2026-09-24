@@ -80,6 +80,17 @@ do_install:append() {
 EPICS_IOC_MACHINE_ROOT ?= "/boot/iocs"
 EPICS_IOC_CARD_MOUNT ?= "/boot"
 
+# What a machine may decide, and therefore the whole menu the card file shows.
+# A filter, not a source of values: every name is projected from the installed
+# entry, so a line on the card is always the value this image ships, and a key
+# the entry does not declare simply projects nothing. The one failure direction
+# is therefore one fewer offer, never a wrong value. IOC_HOST belongs here
+# because pinning a card to one machine is exactly a per-machine decision --
+# ioc-start.sh refuses to start the instance on any other host -- and the fleet
+# leaves it unset, so the entry declares it empty and the card gets an empty
+# line to fill in.
+EPICS_IOC_MACHINE_KEYS ?= "P R IOC_STATE IOC_STATE_DIRS IOC_HOST"
+
 # Put the machine layer on the card as a directory that already exists -- with
 # the instance's data folders in it -- because deploying a BLM board is a job
 # for someone who only ever sees the FAT partition from Windows. Creating
@@ -88,24 +99,21 @@ EPICS_IOC_CARD_MOUNT ?= "/boot"
 # IOC starts, publishes the fleet prefix, and nothing looks wrong until the
 # records are named. A folder that is already there removes that way to fail.
 #
-# The file itself is the installed entry projected down to its assignments --
-# every KEY=value line, in the entry's order, comments dropped, nothing added.
-# No key list lives here because the entry already is one: it declares every
-# key this instance reads, and a second list could only drift from it. A key
-# the fleet leaves unset appears with an empty value, which ioc-start.sh treats
-# exactly as "not set" (`[ -n "$R" ] && export R` and friends), so the line is a
-# placeholder to fill in or to delete.
+# The file itself is the installed entry projected down to the machine keys
+# above: one line each, in the order the whitelist lists them, the value exactly
+# as this image ships it. A key the fleet leaves unset appears with an empty
+# value, which ioc-start.sh treats exactly as "not set" (`[ -n "$R" ] && export
+# R` and friends), so the line is a placeholder to fill in or to delete.
 #
-# That makes the card a menu rather than an override. Every line starts at the
-# value the image ships, so a projection nobody touched behaves as if the file
-# did not exist. The deployment then edits the one line that is this machine's
-# own -- P, the PV prefix -- and deletes the lines this machine does not decide.
-# Deleting is the safe direction: a key absent from the card follows the image.
-# It is also what keeps `ioc-manager show` readable, since that attributes a key
-# to the machine layer only when the card gives it a non-empty value -- so what
-# is left on the card is exactly what this board decided. A card trimmed too far
-# gets its full projection back by deleting the folder and re-running
-# inflate-sd.sh, which never replaces what the card already holds.
+# That makes the card a menu of this machine's own decisions rather than a copy
+# of the registry: where the application lives and which console slot it holds
+# are not the deployer's to edit, and they are not on the card. Every line left
+# there starts at the value the image ships, so a projection nobody touched
+# behaves as if the file did not exist. The deployment edits the line that is
+# this board's -- P, the PV prefix -- and deletes the lines it does not decide.
+# Deleting is always safe: a key absent from the card follows the image. A card
+# trimmed too far gets its projection back by deleting the folder and
+# re-running inflate-sd.sh, which never replaces what the card already holds.
 #
 # deploy.bbclass only gives do_deploy its directories, so this is the whole
 # task rather than an :append.
@@ -139,15 +147,21 @@ do_deploy() {
         inst_dir=${DEPLOYDIR}/${card_iocs}/$instance
         install -d $inst_dir
 
-        # The projection: assignments only, leading whitespace normalized, CR
-        # dropped. LF on the card is what lets the deployer -- and anyone after
-        # them -- diff it against the entry it came from.
-        sed -e 's/^[[:space:]]*//' -n \
-            -e '/^[A-Za-z_][A-Za-z0-9_]*=/p' "$entry" | tr -d '\r' \
-            > $inst_dir/$instance.env
+        # The projection: one line per machine key, in whitelist order, leading
+        # whitespace normalized, CR dropped. Last assignment wins because the
+        # shell that sources the file reads it that way. LF on the card is what
+        # lets the deployer -- and anyone after them -- diff it against the entry
+        # it came from.
+        card=$inst_dir/$instance.env
+        : > $card
+        for key in ${EPICS_IOC_MACHINE_KEYS}; do
+            sed -n -e "/^[[:space:]]*$key=/!d" -e 's/^[[:space:]]*//p' "$entry" |
+                tr -d '\r' | tail -n 1 >> $card
+        done
 
-        # Not a list of card keys: these two say where this instance's data
-        # folders are, which is the one thing do_deploy has to know about.
+        # Read straight from the entry, not from the projection: these two say
+        # where this instance's data folders are, which is the one thing
+        # do_deploy has to know about.
         state=$(entry_key "$entry" IOC_STATE)
         dirs=$(entry_key "$entry" IOC_STATE_DIRS)
         [ -n "$state" ] || state="/var/lib/epics-ioc/$instance"

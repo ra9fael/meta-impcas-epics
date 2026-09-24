@@ -97,9 +97,11 @@ entry -- a plain `KEY=value` env file. Two layers exist, later wins:
   by the IOC package;
 * `/boot/iocs/<name>/<name>.env` -- the machine layer on the writable BOOT
   partition, for per-machine overrides. For every instance the image
-  auto-starts, `epics-ioc-systemd` deploys a projection of the fleet entry as
-  that file's starting point and `inflate-sd.sh` stages the folder onto the
-  card, so on a deployed machine it exists whether anyone edited it or not.
+  auto-starts, `epics-ioc-systemd` deploys that file's starting point: the
+  fleet entry projected down to the keys a machine may decide --
+  `EPICS_IOC_MACHINE_KEYS`, by default `P`, `R`, `IOC_STATE`, `IOC_STATE_DIRS`
+  and `IOC_HOST` -- and `inflate-sd.sh` stages the folder onto the card, so on
+  a deployed machine it exists whether anyone edited it or not.
 
 Deployment staff edit that layer from Windows, so every file the boot chain
 reads off `/boot` tolerates CRLF line endings: `ioc-start.sh`, `bootcfg` and
@@ -170,15 +172,18 @@ at most a bench default for it, never a machine's own:
   re-imaging and lets them travel with the machine; an entry that leaves the
   key out gets `/var/lib/epics-ioc/blm` instead, and nothing else changes.
 
-  Moving that directory is deliberately not one of the things a card may
-  decide. Retargeting it on one machine makes the IOC open a different -- most
-  likely empty -- set of saves, restore nothing at pass 0 and write the record
-  defaults back as this machine's own settings, with no symptom anyone would
-  notice before an interlock fires. Nothing in the file format prevents it: the
-  deployed `blm.env` is a projection of the entry above it, so it carries
-  `IOC_STATE` like every other key. The defence is the procedure -- set `P`,
-  delete the lines this machine does not decide -- and deleting is what removes
-  the hazard, because a key that is not on the card cannot be edited there.
+  `IOC_STATE` and `IOC_STATE_DIRS` are on the card because which medium this
+  board's data lives on is not something the fleet can decide for it: a board
+  with no separate BOOT partition has to say so. That comes with a hazard worth
+  stating plainly. The two are a pair -- the recipe rewrites the application's
+  paths to `$(IOC_STATE)/<dir>` -- so changing one without the other splits one
+  board's data over two places. And retargeting `IOC_STATE` on a machine that
+  already has saves makes the IOC open a different, most likely empty set of
+  them: restore nothing at pass 0, write the record defaults back as this
+  machine's own settings, and no symptom anyone would notice before an interlock
+  fires. `ioc-manager doctor` checks that the directory it names is writable,
+  which catches a mistyped path; it cannot tell an empty directory from this
+  board's own.
 
 Colon style follows the database: the record names in the `.db` templates
 already carry the separator (`$(P):CH0:...`), so `P` values are written
@@ -322,7 +327,7 @@ files on the BOOT partition are:
 
 ```text
 machine/machine.cfg            # HOSTNAME / IP / mask / gateway / DNS / NTP
-iocs/blm/blm.env               # one line per fleet-entry key; P is this machine's
+iocs/blm/blm.env               # the keys a machine may decide; P is this machine's
 iocs/blm/autosave/             # this machine's autosave data, written by the IOC
 iocs/blm/calibrations/         # optional: ADC calibration files for this board
 fpga/<name>.bit.bin            # optional bitstream pool
@@ -337,30 +342,33 @@ Staging never replaces anything the card already holds: the build's copy is a
 template, the card's copy is this machine's configuration and its data, so
 re-imaging a board keeps its prefix, its calibrations and its saved thresholds.
 
-The projected file is the fleet entry's assignments and nothing else -- each
-`KEY=value` line, in the entry's order, comments dropped:
+The projected file holds the machine keys and nothing else -- one line each, in
+the order `EPICS_IOC_MACHINE_KEYS` lists them, each with the value this image
+ships:
 
 ```text
-IOC_INSTANCE_INDEX=0
-IOC_APP_DIR=/opt/epics/iocs/impcas-ioc-blm-zux
-IOC_PATH=iocBoot/iocblm
-IOC_APP_NAME=blm
 P=XRAY:BLM00
 R=
-IOC_HOST=
 IOC_STATE=/boot/iocs/blm
 IOC_STATE_DIRS="autosave calibrations"
+IOC_HOST=
 ```
 
-Every line starts at the value this image ships, so a file nobody edited
-behaves exactly as if it were absent. Deployment is two edits in that one file:
-set `P` to this machine's prefix, and delete every line this machine does not
-decide. Deleting is the safe direction -- an absent key follows the image --
-and it is what keeps the board's own decisions legible: `ioc-manager show blm`
-attributes a key to the machine layer only when the card gives it a non-empty
-value, so on a card trimmed to `P=` alone it reports one `machine` row and the
-rest `fleet`, and the file itself answers "what does this machine do
-differently". A card trimmed too far gets its full projection back by deleting
+Every line starts at the value this image ships, so a file nobody edited behaves
+exactly as if it were absent. Deployment is one edit and, usually, some
+deletions: set `P` to this machine's prefix, and drop the lines this machine does
+not decide -- `R=` and `IOC_HOST=` on almost every board. Leaving them is not
+wrong either; it just says less. Deleting is always the safe direction: an absent
+key follows the image.
+
+What the whitelist keeps *off* the card is half its purpose. Where the
+application lives (`IOC_APP_DIR`, `IOC_PATH`, `IOC_APP_NAME`) and which console
+slot it holds (`IOC_INSTANCE_INDEX`) are the image's business: a mistyped path is
+a unit that does not start at all, a mistyped slot is a console on a port nobody
+expects, and neither is something a deployer should be able to type in the first
+place. What is left is the answer to "what does this machine do differently" --
+`ioc-manager show blm` labels a key `machine` only when the card gives it a
+non-empty value. A card trimmed too far gets its full projection back by deleting
 `iocs/blm/` and running `inflate-sd.sh` again.
 
 That is also why the template is a directory rather than a name to type:
