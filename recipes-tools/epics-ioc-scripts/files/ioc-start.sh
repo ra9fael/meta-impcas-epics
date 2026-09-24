@@ -53,9 +53,10 @@ load_env() {
 load_env "$ENV_ROOT/$INSTANCE.env"
 
 # Machine-level overrides (site config on the writable BOOT partition), last
-# one wins: P, R, IOC_STATE, CA_PORT/PVA_PORT, PS_PORT, APP_PORT_1/2. Note
-# that inside the IOC an envPaths epicsEnvSet outranks these environment
-# values (it runs later, from st.cmd).
+# one wins: P, R, IOC_STATE, IOC_STATE_DIRS, CA_PORT/PVA_PORT, PS_PORT,
+# APP_PORT_1/2. Note that inside the IOC an envPaths epicsEnvSet outranks these
+# environment values (it runs later, from st.cmd) -- which is why the IOC
+# recipes delete or retarget the lines they want the registry to own.
 if [ -r "$MACHINE_ENV_ROOT/$INSTANCE/$INSTANCE.env" ]; then
     load_env "$MACHINE_ENV_ROOT/$INSTANCE/$INSTANCE.env"
 fi
@@ -104,7 +105,22 @@ if [ -n "$PVA_PORT" ]; then
     export EPICS_PVAS_SERVER_PORT="$PVA_PORT"
 fi
 
+# The instance's state directory and the subdirectories its entry declares.
+# Nothing else can make them: autosave only ever stores the path it is handed
+# and a driver that writes beside its target needs that target to exist, so a
+# missing directory loses data while the IOC looks healthy. They are created
+# here, under whatever medium IOC_STATE names, so moving an instance to
+# another partition moves its data with it without provisioning a second time.
 mkdir -p "$IOC_STATE" "$RUN_DIR"
+for dir in $IOC_STATE_DIRS; do
+    case $dir in
+        /* | .. | */../* | ../* | */..)
+            echo "$0: $INSTANCE.env: IOC_STATE_DIRS entry '$dir' is not a subdirectory of IOC_STATE" >&2
+            exit 1
+            ;;
+    esac
+    mkdir -p "$IOC_STATE/$dir"
+done
 cd "$app_dir"
 
 # Optional fleet-level hook, e.g. an external device simulator bound to

@@ -96,7 +96,10 @@ entry -- a plain `KEY=value` env file. Two layers exist, later wins:
 * `/etc/epics/instances/<name>.env` -- the fleet layer, shipped in the image
   by the IOC package;
 * `/boot/iocs/<name>/<name>.env` -- the machine layer on the writable BOOT
-  partition, for per-machine overrides; absent on most machines.
+  partition, for per-machine overrides. For every instance the image
+  auto-starts, `epics-ioc-systemd` deploys a projection of the fleet entry as
+  that file's starting point and `inflate-sd.sh` stages the folder onto the
+  card, so on a deployed machine it exists whether anyone edited it or not.
 
 Deployment staff edit that layer from Windows, so every file the boot chain
 reads off `/boot` tolerates CRLF line endings: `ioc-start.sh`, `bootcfg` and
@@ -111,7 +114,8 @@ IOC_APP_NAME=testAsynPortDriver              # empty: run st.cmd via shebang
 IOC_INSTANCE_INDEX=1                         # console 21010; global across every IOC
 P=ioc1:                                      # record prefix (separators included)
 R=scope1:                                    # optional device root: records are $(P)$(R)...
-IOC_STATE=/var/lib/asyn-scope-ioc/scope01    # writable per-instance state dir (autosave save files)
+IOC_STATE=/var/lib/asyn-scope-ioc/scope01    # writable state dir the dispatcher creates
+IOC_STATE_DIRS="autosave"                    # subdirectories of IOC_STATE to create
 
 #CA_PORT=21013                              # optional: pin the CA server port (else dynamic)
 #PVA_PORT=21014                             # optional: pin the PVA server port (else dynamic)
@@ -132,7 +136,7 @@ The instance name and the PV prefix are two unrelated identities:
 |---|---|---|---|
 | Instance name | `blm` | the registry file name | ops only; uniform across the fleet |
 | `IOC_HOST` | `blm01` | optional key in the registry entry | anti-copy-paste guard |
-| `P` (PV prefix) | `XRAY:BLM:BD40` | per machine, on the BOOT partition | what clients see |
+| `P` (PV prefix) | `XRAY:BLM00` | per machine, on the BOOT partition | what clients see |
 
 The instance name is constrained to lowercase `[a-z0-9-]` (systemd's `%i` and
 the dispatcher's validation reject colons and upper case), and since every
@@ -145,22 +149,36 @@ at most a bench default for it, never a machine's own:
   IOC an envPaths `epicsEnvSet` outranks the environment: it runs later, from
   st.cmd.
 * the BLM IOC is built around exactly that precedence. Its recipe deletes the
-  `epicsEnvSet("P", ...)` line from the installed `envPaths`, rewrites
-  `AUTOSAVES` to `$(IOC_STATE)` and drops the line that sourced a
-  `/boot/iocs/.../envPaths`, so the prefix and the autosave location are both
+  `epicsEnvSet("P", ...)` line from the installed `envPaths`, retargets the two
+  writable paths the application hard-codes to `$(IOC_STATE)/autosave` and
+  `$(IOC_STATE)/calibrations`, and drops the line that sourced a
+  `/boot/iocs/.../envPaths`, so the prefix and the state directory are both
   ordinary registry keys and one file per machine is enough:
 
   ```sh
-  # /boot/iocs/blm/blm.env -- FAT, editable from Windows
-  P=XRAY:BLM:BD40
+  # /boot/iocs/blm/blm.env -- what is left on the card once deployed
+  P=XRAY:BLM00
   ```
 
   Named after the instance, not after the iocBoot directory: the folder an
   operator touches is `iocs/blm/`. The autosave library only ever stores the
-  path it is given and never makes a directory, so `IOC_STATE` -- which the
-  dispatcher creates before exec'ing procServ -- is what puts saves on
-  writable media: `/boot/iocs/blm/autosave` on this board,
-  `/var/lib/epics-ioc/blm` on a machine with no separate BOOT partition.
+  path it is given and the BLM driver only opens a file beside its target, so
+  neither can make a directory -- which is what `IOC_STATE` plus
+  `IOC_STATE_DIRS` are for: the dispatcher creates the tree before exec'ing
+  procServ, on whatever medium the entry names. `IOC_STATE=/boot/iocs/blm`
+  keeps this board's tuned thresholds and its calibration through a rootfs
+  re-imaging and lets them travel with the machine; an entry that leaves the
+  key out gets `/var/lib/epics-ioc/blm` instead, and nothing else changes.
+
+  Moving that directory is deliberately not one of the things a card may
+  decide. Retargeting it on one machine makes the IOC open a different -- most
+  likely empty -- set of saves, restore nothing at pass 0 and write the record
+  defaults back as this machine's own settings, with no symptom anyone would
+  notice before an interlock fires. Nothing in the file format prevents it: the
+  deployed `blm.env` is a projection of the entry above it, so it carries
+  `IOC_STATE` like every other key. The defence is the procedure -- set `P`,
+  delete the lines this machine does not decide -- and deleting is what removes
+  the hazard, because a key that is not on the card cannot be edited there.
 
 Colon style follows the database: the record names in the `.db` templates
 already carry the separator (`$(P):CH0:...`), so `P` values are written
@@ -223,7 +241,11 @@ is a script, not procServ directly. `ioc-start.sh <instance>`:
 4. derives the console and application ports (`ioc-ports.sh`),
 5. exports `EPICS_CA_SERVER_PORT` / `EPICS_PVAS_SERVER_PORT` when the entry
    pinned `CA_PORT` / `PVA_PORT` (the servers read them at startup),
-6. exports the conventional `P` / `R` macros when the entry sets them, defaults `IOC_STATE` and creates the state directory,
+6. exports the conventional `P` / `R` macros when the entry sets them, defaults
+   `IOC_STATE` and creates it along with every subdirectory `IOC_STATE_DIRS`
+   names (neither autosave nor an application's own directory creation can
+   make a path that does not exist yet, so an instance whose data lives in
+   subfolders has to declare them),
 7. `cd`s into `$IOC_APP_DIR/$IOC_PATH`, sources the optional `ioc-start.pre`
    hook and runs `$IOC_START_PRE`,
 8. `exec procServ -f -L - --name=<instance> -I <info file> -P "$PS_PORT" ...`.
@@ -295,19 +317,57 @@ the port table of [port-allocation.md](port-allocation.md).
 
 The whole chain -- bootmount, bootcfg, fpgacfg, the instance registry, the
 dispatcher -- is only exercised together on the target. After rebuilding the
-image and redeploying (`petalinux-build`, `inflate-sd.sh`), put this
-machine's site files on the BOOT partition before the first boot:
+image and redeploying (`petalinux-build`, `inflate-sd.sh`), this machine's site
+files on the BOOT partition are:
 
 ```text
-machine.cfg                    # HOSTNAME / IP / mask / gateway / DNS / NTP
-iocs/blm/blm.env               # P=XRAY:BLM:BD40  <- this machine's prefix
-iocs/blm/calibrations/         # optional: ADC calibration files
+machine/machine.cfg            # HOSTNAME / IP / mask / gateway / DNS / NTP
+iocs/blm/blm.env               # one line per fleet-entry key; P is this machine's
+iocs/blm/autosave/             # this machine's autosave data, written by the IOC
+iocs/blm/calibrations/         # optional: ADC calibration files for this board
 fpga/<name>.bit.bin            # optional bitstream pool
 fpga/active.conf               # optional: BITSTREAM=<pool file name>
 ```
 
-`iocs/blm/autosave/` is not on that list: the dispatcher creates it on the
-first start, and an empty one is meaningless to pre-fill.
+`inflate-sd.sh` stages all of it: the two site files from the templates bootcfg
+and fpgacfg deploy, and `iocs/blm/` from the tree `epics-ioc-systemd` deploys
+for every instance the image auto-starts -- the projected env file plus the
+instance's data folders, empty, so the card is ready before anyone touches it.
+Staging never replaces anything the card already holds: the build's copy is a
+template, the card's copy is this machine's configuration and its data, so
+re-imaging a board keeps its prefix, its calibrations and its saved thresholds.
+
+The projected file is the fleet entry's assignments and nothing else -- each
+`KEY=value` line, in the entry's order, comments dropped:
+
+```text
+IOC_INSTANCE_INDEX=0
+IOC_APP_DIR=/opt/epics/iocs/impcas-ioc-blm-zux
+IOC_PATH=iocBoot/iocblm
+IOC_APP_NAME=blm
+P=XRAY:BLM00
+R=
+IOC_HOST=
+IOC_STATE=/boot/iocs/blm
+IOC_STATE_DIRS="autosave calibrations"
+```
+
+Every line starts at the value this image ships, so a file nobody edited
+behaves exactly as if it were absent. Deployment is two edits in that one file:
+set `P` to this machine's prefix, and delete every line this machine does not
+decide. Deleting is the safe direction -- an absent key follows the image --
+and it is what keeps the board's own decisions legible: `ioc-manager show blm`
+attributes a key to the machine layer only when the card gives it a non-empty
+value, so on a card trimmed to `P=` alone it reports one `machine` row and the
+rest `fleet`, and the file itself answers "what does this machine do
+differently". A card trimmed too far gets its full projection back by deleting
+`iocs/blm/` and running `inflate-sd.sh` again.
+
+That is also why the template is a directory rather than a name to type:
+creating `blm.env` from Windows means typing an exact filename into a dialog
+whose `.txt` extension is hidden by default, and `blm.env.txt` is silently not a
+registry entry -- the IOC starts and publishes the fleet prefix, and nothing
+looks wrong until the records are named.
 
 Then boot and walk the chain:
 
@@ -322,8 +382,8 @@ ioc-manager list                           # blm enabled/active; scope01/02 inst
 ioc-manager report                         # slot / port / prefix / application
 
 # 3. data plane: console banner carries the instance name, records carry P
-telnet 127.0.0.1 21000                     # iocsh; dbl shows XRAY:BLM:BD40:CH0:...
-caget XRAY:BLM:BD40:CH0:ADC_WARN_TH        # from the board or any client
+telnet 127.0.0.1 21000                     # iocsh; dbl shows XRAY:BLM00:CH0:...
+caget XRAY:BLM00:CH0:ADC_WARN_TH           # from the board or any client
 ```
 
 Failure semantics (deliberate, see above): kill the IOC with `^X` in the
@@ -333,9 +393,9 @@ back with `systemctl start epics-ioc@blm` after investigating.
 
 Two negative tests are worth running once per image:
 
-* **Machine overrides and the host guard.** Put `IOC_HOST=other-machine` in
-  `/boot/iocs/blm/blm.env` and restart the unit: it must refuse to start with
-  the pinned-host message. Fix the name, restart, done.
+* **Machine overrides and the host guard.** Fill in the `IOC_HOST=` line the
+  projection leaves empty as `other-machine` and restart the unit: it must
+  refuse to start with the pinned-host message. Fix the name, restart, done.
 * **The PL must be verifiably configured.** Two cases, same requirement from
   different directions:
   - *A failed bitstream load must stop the IOC.* Put two `.bit.bin` files in

@@ -100,8 +100,10 @@ recipe 里 `EPICS_IOC_INSTANCES` 与 `EPICS_IOC_AUTO_ENABLE = "enable"` 同时
 
 ### autosave：`write_it: No such file or directory`
 
-存盘目录不存在。`ioc-start.sh` 会在启动 IOC 前创建 `$IOC_STATE`；手工运行 IOC
-时需要先建好。
+存盘目录不存在。`ioc-start.sh` 会在启动 IOC 前创建 `$IOC_STATE`，以及
+`IOC_STATE_DIRS` 列出的每一个子目录；手工运行 IOC 时需要先建好。`AUTOSAVES`
+指向某个子目录（`$IOC_STATE/autosave`）的 IOC，必须在条目里把那个子目录声明
+出来，否则调度器不会创建它。
 
 ### asyn 读超时，`TIMEOUT INVALID`
 

@@ -87,7 +87,9 @@ IOC 链接到的每个模块都必须写进 `RDEPENDS`：shlibs 扫描看不到
 
 * `/etc/epics/instances/<name>.env` —— 队级层，由 IOC 包随镜像安装；
 * `/boot/iocs/<name>/<name>.env` —— 机器级层，位于可写的 BOOT 分区，用于每台
-  机器的差异化覆盖；多数机器上不存在。
+  机器的差异化覆盖。镜像自动启动的每个实例，`epics-ioc-systemd` 都会把队级条目
+  投影成这个文件的初始版本 deploy 出来，`inflate-sd.sh` 再把整个目录拷到卡上：
+  所以在部署好的机器上，这个文件一直都在，无论有没有人改过它。
 
 部署人员会在 Windows 上编辑机器级层，因此引导链从 `/boot` 读取的每个文件都
 容忍 CRLF 行尾：`ioc-start.sh`、`bootcfg`、`fpgacfg` 都会检测到 CR、给出警告，
@@ -103,6 +105,7 @@ IOC_INSTANCE_INDEX=1                         # 控制台 21010；对 target 上�
 P=ioc1:                                      # 记录前缀（分隔符包含在值里）
 R=scope1:                                    # 可选设备根：记录名形如 $(P)$(R)...
 IOC_STATE=/var/lib/asyn-scope-ioc/scope01    # 可写的实例状态目录（autosave save 文件）
+IOC_STATE_DIRS="autosave"                    # IOC_STATE 下需要一并创建的子目录
 
 #CA_PORT=21013                              # 可选：固定 CA 服务端口（否则动态）
 #PVA_PORT=21014                             # 可选：固定 PVA 服务端口（否则动态）
@@ -123,7 +126,7 @@ IOC_STATE=/var/lib/asyn-scope-ioc/scope01    # 可写的实例状态目录（aut
 |---|---|---|---|
 | 实例名 | `blm` | 注册表文件名 | 仅运维标识；全队统一 |
 | `IOC_HOST` | `blm01` | 注册表条目的可选键 | 防拷贝错误的守卫 |
-| `P`（PV 前缀） | `XRAY:BLM:BD40` | 每台机器，位于 BOOT 分区 | 客户端看到的名字 |
+| `P`（PV 前缀） | `XRAY:BLM00` | 每台机器，位于 BOOT 分区 | 客户端看到的名字 |
 
 实例名被限定为小写 `[a-z0-9-]`（systemd 的 `%i` 和调度器校验都拒绝冒号和
 大写），而且每台机器跑的是同一个镜像，所以它必须处处相同：二十台机器上都是
@@ -134,20 +137,61 @@ IOC_STATE=/var/lib/asyn-scope-ioc/scope01    # 可写的实例状态目录（aut
   `/boot/iocs/<name>/<name>.env` 机器层可以覆盖。IOC 内部的 envPaths
   `epicsEnvSet` 优先级更高：它在 st.cmd 里更晚执行。
 * BLM IOC 正是围绕这个优先级组织的：它的 recipe 从安装后的 `envPaths` 里删掉
-  `epicsEnvSet("P", ...)` 这一行，把 `AUTOSAVES` 改写成 `$(IOC_STATE)`，并去掉
-  那行 source `/boot/iocs/.../envPaths` 的命令；于是前缀和 autosave 位置都成了
-  普通的注册表键，每台机器只需一个文件：
+  `epicsEnvSet("P", ...)` 这一行，把应用硬编码的两个可写路径改写成
+  `$(IOC_STATE)/autosave` 和 `$(IOC_STATE)/calibrations`，并去掉那行 source
+  `/boot/iocs/.../envPaths` 的命令；于是前缀和状态目录位置都成了普通的注册表键，
+  每台机器只需一个文件：
 
   ```sh
-  # /boot/iocs/blm/blm.env —— FAT 分区，Windows 上即可编辑
-  P=XRAY:BLM:BD40
+  # /boot/iocs/blm/blm.env —— 部署完成后，卡上剩下的就是这一行
+  P=XRAY:BLM00
   ```
 
-  目录按实例名而不是按 iocBoot 目录命名：运维要碰的是 `iocs/blm/`。autosave
-  库只保存它拿到的路径，从不自己建目录，所以真正决定落盘介质的是
-  `IOC_STATE`——调度器在 exec procServ 之前就会创建它：本机是
-  `/boot/iocs/blm/autosave`，没有独立 BOOT 分区的机器则是
-  `/var/lib/epics-ioc/blm`。
+  目录按实例名而不是按 iocBoot 目录命名：运维要碰的是 `iocs/blm/`。autosave 库
+  只保存它拿到的路径，BLM 驱动也只会在目标路径旁打开文件，两者都建不出不存在的
+  目录——这就是 `IOC_STATE` 加 `IOC_STATE_DIRS` 的用处：调度器在 exec procServ
+  之前，就按条目指定的介质把整棵目录树建好。本机取
+  `IOC_STATE=/boot/iocs/blm`，调好的阈值和标定文件因此能穿过一次 rootfs 重刷，
+  并随机器一起走；条目里不设这个键的机器会拿到 `/var/lib/epics-ioc/blm`，其它
+  一切不变。
+
+  把这个目录挪走，是被有意排除在卡片的决定之外的。某台机器上改了它，IOC 打开的就是
+  另一套——大概率是空的——save 文件，第 0 轮什么都恢复不回来，反而把记录默认值
+  当成这台机器自己的设置写回去；在联锁真的动作之前，没人会看出任何症状。文件本身
+  拦不住这件事：deploy 出来的 `blm.env` 是上面这份条目的投影，每个键都照抄，
+  `IOC_STATE` 也在里面。防线是部署规程的那两步——改 `P`、把本机不决定的行删掉——
+  而"删行"顺手就把隐患一起删掉了：卡上不存在的键，没人在卡上改它。
+
+  这个文件在卡上的起点，是条目的投影：只包含赋值行，保持原顺序、丢掉注释：
+
+  ```text
+  IOC_INSTANCE_INDEX=0
+  IOC_APP_DIR=/opt/epics/iocs/impcas-ioc-blm-zux
+  IOC_PATH=iocBoot/iocblm
+  IOC_APP_NAME=blm
+  P=XRAY:BLM00
+  R=
+  IOC_HOST=
+  IOC_STATE=/boot/iocs/blm
+  IOC_STATE_DIRS="autosave calibrations"
+  ```
+
+  每一行的起点都是本镜像发出的值，所以一份没人动过的投影，行为等同于这个文件
+  不存在。部署就是对这一个文件做两件事：把 `P` 改成本机的前缀，再删掉本机不决定
+  的行。删行是安全的方向——条目里没有的键跟随镜像——而且它让本机自己的决定看得
+  出来：`ioc-manager show blm` 只在卡上给出非空值时才把某个键标成机器层，所以裁到
+  只剩 `P=` 的卡会报一行 `machine`、其余 `fleet`，文件本身就回答了"这台机器哪里
+  不一样"。删多了就把 `iocs/blm/` 整个文件夹删掉再跑一次 `inflate-sd.sh`，取回
+  完整投影。
+
+  镜像不设的键（`R`、`IOC_HOST`）在条目里写成空值，投影到卡上就是空行：
+  `ioc-start.sh` 只在非空时才 export（`[ -n "$R" ] && export R`），所以空值等价于
+  "不设"，这一行只是留给本机的占位，不用就删。
+
+  这也是为什么卡上的模板是一个目录、而不是一个要人敲出来的文件名：从 Windows 新建
+  `blm.env` 意味着在一个默认隐藏 `.txt` 后缀的对话框里精确输入名字，而
+  `blm.env.txt` 悄悄就不是一条注册表条目——IOC 照样启动、照样广播队级前缀，直到
+  记录名对上才看得出不对。
 
 冒号风格跟随数据库：`.db` 模板里的记录名自带分隔符（`$(P):CH0:...`），所以
 `P` 的值不带尾冒号。
@@ -205,7 +249,9 @@ procServ 本身。`ioc-start.sh <实例名>` 依次：
 4. 推导控制口和应用口（`ioc-ports.sh`）；
 5. env 固定了 `CA_PORT`/`PVA_PORT` 时，导出
    `EPICS_CA_SERVER_PORT`/`EPICS_PVAS_SERVER_PORT`（服务端启动时读取）；
-6. 注册表设置了 `P` / `R` 时将其 export，为 `IOC_STATE` 取默认值并创建状态目录；
+6. 注册表设置了 `P` / `R` 时将其 export，为 `IOC_STATE` 取默认值，并连同
+   `IOC_STATE_DIRS` 列出的每个子目录一起创建（autosave 和应用自己都建不出还
+   不存在的路径，数据放在子目录里的实例必须把这些子目录声明出来）；
 7. `cd` 进 `$IOC_APP_DIR/$IOC_PATH`，source 可选的 `ioc-start.pre` 钩子并
    执行 `$IOC_START_PRE`；
 8. `exec procServ -f -L - --name=<实例名> -I <info文件> -P "$PS_PORT" ...`。

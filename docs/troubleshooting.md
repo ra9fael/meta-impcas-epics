@@ -116,7 +116,10 @@ systemd cannot find the instance, check that
 ### autosave: `write_it: No such file or directory`
 
 The save-file directory does not exist. `ioc-start.sh` creates `$IOC_STATE`
-before starting the IOC; running the IOC by hand requires creating it first.
+and every subdirectory `IOC_STATE_DIRS` names before starting the IOC; running
+the IOC by hand requires creating them first. An IOC whose `AUTOSAVES` path
+points below a subdirectory (`$IOC_STATE/autosave`) needs that subdirectory
+declared in the entry, or the dispatcher will not make it.
 
 ### asyn reads time out with `TIMEOUT INVALID`
 
