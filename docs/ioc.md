@@ -19,10 +19,9 @@ Three pieces cooperate:
   template (`epics-ioc@.service`), the `ioc-start.sh` dispatcher and the
   port-slot helpers. An instance is identified by its host-global name only.
 
-`epics-asyn-scope-ioc` in `recipes-examples/epics-asyn-scope-ioc/` is a complete
-example: it builds asyn's own simulated oscilloscope test IOC
-(`testAsynPortDriver`) straight from the asyn sources. Read its recipe alongside
-this document.
+`recipes-examples/epics-test-asyn-port-driver/` is a complete example: it builds
+asyn's own simulated oscilloscope test IOC (`testAsynPortDriver`) straight from
+the asyn sources. Read its recipe alongside this document.
 
 ## Boot directory
 
@@ -73,12 +72,13 @@ set, and still starts.
 /usr/libexec/epics-ioc/{ioc-start.sh,ioc-ports.sh,epics-ioc-env}
 /usr/bin/{ioc-ports,ioc-manager,ioc-instance-add}
 /etc/epics/instances/{tapd01.env,tapd02.env}   # the instance registry (fleet layer)
-/opt/epics/iocs/asyn-scope-ioc -> asyn-scope-ioc-1.0
-/opt/epics/iocs/asyn-scope-ioc-1.0/
+/opt/epics/iocs/tapd -> tapd-1.0
+/opt/epics/iocs/tapd-1.0/
 ├── bin/linux-aarch64/testAsynPortDriver
 ├── lib/linux-aarch64/libtestAsynPortDriverSupport.so
 ├── db/testAsynPortDriver.db
 ├── dbd/testAsynPortDriver.dbd
+├── opi/{tapd.bob,tapd_launcher.bob}
 └── iocBoot/ioctestAsynPortDriver/{st.cmd,envPaths}
 ```
 
@@ -152,7 +152,7 @@ reads off `/boot` tolerates CRLF line endings: `ioc-start.sh`, `bootcfg` and
 The registry entry points at the application and carries the identity:
 
 ```sh
-IOC_APP_DIR=/opt/epics/iocs/asyn-scope-ioc   # where the application lives
+IOC_APP_DIR=/opt/epics/iocs/tapd              # where the application lives
 IOC_PATH=iocBoot/ioctestAsynPortDriver       # below IOC_APP_DIR
 IOC_APP_NAME=testAsynPortDriver              # empty: run st.cmd via shebang
 IOC_INSTANCE_INDEX=1                         # console 21010; global across every IOC
@@ -348,12 +348,14 @@ caget TAPD02:scope1:Waveform_RBV              # the other instance, still no con
 
 The waveform records of this IOC are read-only (`Waveform_RBV`,
 `TimeBase_RBV`); the writable records are `Run`, `VoltOffset`, `TriggerDelay`,
-`NoiseAmplitude`, `UpdateTime` and the three `*Select` enumerations. A Phoebus
-display for the oscilloscope is installed on the target at
-`/opt/epics/iocs/asyn-scope-ioc-1.0/opi/asyn-scope-tapd01.bob` -- copy it to
-the client and open it in Phoebus. Its default macros are `P=TAPD01:`,
-`R=scope1:`, so it points at the tapd01 instance out of the box; another
-instance only needs `-m "P=TAPD02:"` in the client.
+`NoiseAmplitude`, `UpdateTime` and the three `*Select` enumerations. Two Phoebus
+displays install on the target under `/opt/epics/iocs/tapd-1.0/opi/`, and the
+launcher is the one to open: `tapd_launcher.bob` has a button per instance and
+hands `tapd.bob` the `P` and `R` to draw, so `tapd.bob` declares both as
+pass-through macros and commits to no instance of its own. Copy the two files
+across together: `tapd_launcher.bob` names `tapd.bob` by plain filename, which
+Phoebus resolves in the launcher's own folder. Opening `tapd.bob` alone means
+passing `-m "P=TAPD01:,R=scope1:"`.
 
 The simulated oscilloscope does not open sockets of its own, so its instances
 use no application ports. An IOC that does -- one that acts as a Modbus or

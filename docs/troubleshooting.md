@@ -149,7 +149,9 @@ starting whenever another infofile already serves that console port.
 The holder is not necessarily a current instance: a board whose rootfs was
 updated in place instead of reflashed from scratch keeps units from an older
 image together with their `.wants` symlinks, and those start at boot and take
-the ports (observed with `epics-asyn-scope-ioc@ioc0.service` holding 21000).
+the ports (observed with `epics-asyn-scope-ioc@ioc0.service` holding 21000;
+that was the recipe's name before the current one, which is how a leftover
+unit can outlive the package it came from).
 `systemctl list-units --all | grep -i ioc` shows them; disable and delete the
 leftovers, or reflash the rootfs partition from scratch.
 

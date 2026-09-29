@@ -11,16 +11,16 @@
 
 ## Recipe 列表
 
-| Recipe           | 版本           | 安装位置                                     |
-|------------------|----------------|----------------------------------------------|
-| `epics-base`     | 7.0.10         | `/opt/epics/base[-7.0.10]`                   |
-| `epics-asyn`     | 4.46           | `/opt/epics/modules/asyn[-4.46]`             |
-| `epics-autosave` | 6.0            | `/opt/epics/modules/autosave[-6.0]`          |
-| `epics-asyn-scope-ioc` | 1.0 | `/opt/epics/iocs/asyn-scope-ioc[-1.0]`      |
-| `procserv`       | master（`+git`） | `/usr/bin/procServ`                        |
+| Recipe                        | 版本             | 安装位置                            |
+|-------------------------------|------------------|-------------------------------------|
+| `epics-base`                  | 7.0.10           | `/opt/epics/base[-7.0.10]`          |
+| `epics-asyn`                  | 4.46             | `/opt/epics/modules/asyn[-4.46]`    |
+| `epics-autosave`              | 6.0              | `/opt/epics/modules/autosave[-6.0]` |
+| `epics-test-asyn-port-driver` | 1.0              | `/opt/epics/iocs/tapd[-1.0]`        |
+| `procserv`                    | master（`+git`） | `/usr/bin/procServ`                 |
 
-`epics-asyn-scope-ioc` 既是示例，也是 BLM IOC 的模板：它构建的就是 asyn 自带的
-模拟示波器测试 IOC。IOC 文档都以它为例。
+`epics-test-asyn-port-driver` 既是示例，也是 BLM IOC 的模板：它构建的就是
+asyn 自带的模拟示波器测试 IOC。IOC 文档都以它为例。
 `procserv` 跟随上游 master，因此每次构建都会重新拉取和编译，需要联网。
 
 ## bbclass
@@ -169,7 +169,7 @@ CONFIG_epics-base
 CONFIG_epics-asyn
 CONFIG_epics-autosave
 CONFIG_procserv
-CONFIG_epics-asyn-scope-ioc
+CONFIG_epics-test-asyn-port-driver
 ```
 
 然后打开 rootfs 配置菜单确认这些包已勾选：
@@ -183,13 +183,13 @@ petalinux-config -c rootfs
 或者把它加到 `project-spec/meta-user/conf/user.conf`：
 
 ```bitbake
-IMAGE_INSTALL:append = " epics-base epics-asyn epics-autosave procserv epics-asyn-scope-ioc"
+IMAGE_INSTALL:append = " epics-base epics-asyn epics-autosave procserv epics-test-asyn-port-driver"
 ```
 
 不要同时使用两种方式。
 
-`epics-asyn-scope-ioc` 依赖 `epics-asyn` 和 `procserv`，只勾选它就会带出这两者；
-`epics-autosave` 只会被用到它的 recipe 带入。
+`epics-test-asyn-port-driver` 依赖 `epics-asyn` 和 `procserv`，只勾选它就会
+带出这两者；`epics-autosave` 只会被用到它的 recipe 带入。
 
 ## 构建
 
@@ -197,7 +197,7 @@ IMAGE_INSTALL:append = " epics-base epics-asyn epics-autosave procserv epics-asy
 
 ```bash
 petalinux-build -c epics-base
-petalinux-build -c epics-asyn-scope-ioc
+petalinux-build -c epics-test-asyn-port-driver
 ```
 
 再构建完整镜像：
@@ -220,7 +220,7 @@ target 启动后检查：
 /opt/epics/base-7.0.10/lib/<目标体系结构>/
 /opt/epics/modules/asyn -> asyn-4.46
 /opt/epics/modules/autosave -> autosave-6.0
-/opt/epics/iocs/asyn-scope-ioc -> asyn-scope-ioc-1.0
+/opt/epics/iocs/tapd -> tapd-1.0
 /etc/profile.d/epics.sh
 /usr/bin/procServ
 ```

@@ -21,7 +21,11 @@ S = "${WORKDIR}/git"
 
 inherit epics-ioc-systemd
 
-EPICS_MODULE_NAME = "asyn-scope-ioc"
+# EPICS_MODULE_NAME is the directory below /opt/epics/iocs: tapd-1.0, plus the
+# version-independent symlink tapd that the registry entries point at with
+# IOC_APP_DIR. Named with the same stem as the instances because the path gets
+# typed on a console more often than it gets read in a document.
+EPICS_MODULE_NAME = "tapd"
 
 # One entry replaces four declarations: DEPENDS and RDEPENDS gain epics-asyn,
 # configure/RELEASE gains the staged ASYN path, and the IOC's rpath gains the
@@ -83,10 +87,13 @@ do_install:append() {
     install_dir=${D}${EPICS_INSTALL_BASE}/${EPICS_MODULE_NAME}-${EPICS_MODULE_VERSION}
     ioc_boot=${install_dir}/${IOC_PATH}
 
-    # Phoebus display for the simulated oscilloscope. The default macros in
-    # the file (P=TAPD01:, R=scope1:) match the tapd01 instance env, so opening
-    # it works unconfigured; other instances pass -m overrides in the client,
-    # which is why the file is named for the instance it defaults to.
+    # Two Phoebus displays. tapd.bob draws the oscilloscope and declares P and
+    # R as pass-through macros, so it commits to no instance; tapd_launcher.bob
+    # is the entry point, one button per instance handing its P and R to
+    # tapd.bob by plain filename, which the client resolves beside the
+    # launcher -- so the two files ship together, as the glob installs them.
+    # Opening tapd.bob by itself means passing -m "P=TAPD01:,R=scope1:" in the
+    # client, which is exactly what the launcher saves.
     install -d ${install_dir}/opi
     install -m 0644 ${WORKDIR}/opi/*.bob ${install_dir}/opi/
 

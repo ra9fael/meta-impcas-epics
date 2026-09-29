@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <display version="2.0.0">
-  <name>TAPD01:scope1</name>
+  <name>tapd</name>
   <macros>
-    <P>TAPD01:</P>
-    <R>scope1:</R>
+    <P>$(P)</P>
+    <R>$(R)</R>
   </macros>
   <x>317</x>
   <y>111</y>

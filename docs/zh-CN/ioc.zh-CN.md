@@ -17,9 +17,9 @@ IOC 可执行文件和 `.dbd` 的 `*App/src`、放记录的 `*App/Db`，以及�
   （`epics-ioc@.service`）、`ioc-start.sh` 调度器和端口槽位辅助脚本。实例只由
   它的全机唯一名字标识。
 
-`recipes-examples/epics-asyn-scope-ioc/` 里的 `epics-asyn-scope-ioc` 是完整示例：它直接
-从 asyn 源码构建 asyn 自带的模拟示波器测试 IOC（`testAsynPortDriver`）。阅读本文
-时请对照它的 recipe。
+`recipes-examples/epics-test-asyn-port-driver/` 是完整示例：它直接从 asyn 源码
+构建 asyn 自带的模拟示波器测试 IOC（`testAsynPortDriver`）。阅读本文时请
+对照它的 recipe。
 
 ## 启动目录
 
@@ -60,12 +60,13 @@ host 侧 `install` 动作时依赖的正是这个通配，示例裁剪 asyn 其�
 /usr/libexec/epics-ioc/{ioc-start.sh,ioc-ports.sh,epics-ioc-env}
 /usr/bin/{ioc-ports,ioc-manager,ioc-instance-add}
 /etc/epics/instances/{tapd01.env,tapd02.env}   # 实例注册表（队级层）
-/opt/epics/iocs/asyn-scope-ioc -> asyn-scope-ioc-1.0
-/opt/epics/iocs/asyn-scope-ioc-1.0/
+/opt/epics/iocs/tapd -> tapd-1.0
+/opt/epics/iocs/tapd-1.0/
 ├── bin/linux-aarch64/testAsynPortDriver
 ├── lib/linux-aarch64/libtestAsynPortDriverSupport.so
 ├── db/testAsynPortDriver.db
 ├── dbd/testAsynPortDriver.dbd
+├── opi/{tapd.bob,tapd_launcher.bob}
 └── iocBoot/ioctestAsynPortDriver/{st.cmd,envPaths}
 ```
 
@@ -132,7 +133,7 @@ IOC 链接到的每个模块都必须写进 `RDEPENDS`：shlibs 扫描看不到
 注册表条目指出应用位置并携带实例身份：
 
 ```sh
-IOC_APP_DIR=/opt/epics/iocs/asyn-scope-ioc   # 应用所在目录
+IOC_APP_DIR=/opt/epics/iocs/tapd             # 应用所在目录
 IOC_PATH=iocBoot/ioctestAsynPortDriver       # 相对 IOC_APP_DIR
 IOC_APP_NAME=testAsynPortDriver              # 留空：通过 shebang 运行 st.cmd
 IOC_INSTANCE_INDEX=1                         # 控制台 21010；对 target 上所有 IOC 全局唯一
@@ -341,10 +342,12 @@ caget TAPD02:scope1:Waveform_RBV              # 另一个实例，同样零配�
 
 这个 IOC 的波形记录是只读的（`Waveform_RBV`、`TimeBase_RBV`）；可写的记录是
 `Run`、`VoltOffset`、`TriggerDelay`、`NoiseAmplitude`、`UpdateTime` 和三个
-`*Select` 枚举。示波器的 Phoebus 显示界面随 IOC 装在目标板的
-`/opt/epics/iocs/asyn-scope-ioc-1.0/opi/asyn-scope-tapd01.bob`——把它拷到客户端用
-Phoebus 打开即可。文件里的默认宏是 `P=TAPD01:`、`R=scope1:`，开箱即指向 tapd01
-实例；其他实例只需在客户端加 `-m "P=TAPD02:"`。
+`*Select` 枚举。目标板上装了两个 Phoebus 界面，都在
+`/opt/epics/iocs/tapd-1.0/opi/`；要打开的是 launcher——`tapd_launcher.bob` 一个
+实例一个按钮，把要画的 `P` 和 `R` 交给 `tapd.bob`，所以 `tapd.bob` 把这两个宏
+声明成透传，不绑定任何实例。两个文件要一起拷到客户端：launcher 里 `tapd.bob`
+只写文件名，Phoebus 会在 launcher 同级目录找到它。单独打开 `tapd.bob` 就得在
+客户端传 `-m "P=TAPD01:,R=scope1:"`。
 
 模拟示波器不自己开 socket，所以它的实例不占用应用口。需要应用口的 IOC——比如
 做 Modbus 或 stream-device 服务端的——在 env 文件里固定，并写入

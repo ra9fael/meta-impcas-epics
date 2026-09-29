@@ -14,18 +14,18 @@ This document is the getting-started guide. The topic documentation lives in
 
 ## Recipes
 
-| Recipe           | Version      | Installs to                                  |
-|------------------|--------------|----------------------------------------------|
-| `epics-base`     | 7.0.10       | `/opt/epics/base[-7.0.10]`                   |
-| `epics-asyn`     | 4.46         | `/opt/epics/modules/asyn[-4.46]`             |
-| `epics-autosave` | 6.0          | `/opt/epics/modules/autosave[-6.0]`          |
-| `epics-asyn-scope-ioc` | 1.0 | `/opt/epics/iocs/asyn-scope-ioc[-1.0]`      |
-| `procserv`       | master (`+git`) | `/usr/bin/procServ`                       |
+| Recipe                        | Version         | Installs to                         |
+|-------------------------------|-----------------|-------------------------------------|
+| `epics-base`                  | 7.0.10          | `/opt/epics/base[-7.0.10]`          |
+| `epics-asyn`                  | 4.46            | `/opt/epics/modules/asyn[-4.46]`    |
+| `epics-autosave`              | 6.0             | `/opt/epics/modules/autosave[-6.0]` |
+| `epics-test-asyn-port-driver` | 1.0             | `/opt/epics/iocs/tapd[-1.0]`        |
+| `procserv`                    | master (`+git`) | `/usr/bin/procServ`                 |
 
-`epics-asyn-scope-ioc` is an example and the template for the BLM IOC: it builds
-asyn's own simulated oscilloscope test IOC. It is what the IOC documentation
-refers to. `procserv` follows upstream master, so it is
-rebuilt on each run and needs network access.
+`epics-test-asyn-port-driver` is an example and the template for the BLM
+IOC: it builds asyn's own simulated oscilloscope test IOC. It is what the IOC
+documentation refers to. `procserv` follows upstream master, so it is rebuilt
+on each run and needs network access.
 
 ## Classes
 
@@ -178,7 +178,7 @@ CONFIG_epics-base
 CONFIG_epics-asyn
 CONFIG_epics-autosave
 CONFIG_procserv
-CONFIG_epics-asyn-scope-ioc
+CONFIG_epics-test-asyn-port-driver
 ```
 
 Then open the rootfs configuration menu and confirm the packages are selected:
@@ -192,14 +192,15 @@ petalinux-config -c rootfs
 Alternatively, add this to `project-spec/meta-user/conf/user.conf`:
 
 ```bitbake
-IMAGE_INSTALL:append = " epics-base epics-asyn epics-autosave procserv epics-asyn-scope-ioc"
+IMAGE_INSTALL:append = " epics-base epics-asyn epics-autosave procserv epics-test-asyn-port-driver"
 ```
 
 Do not use both methods at the same time.
 
-`epics-asyn-scope-ioc` depends on `epics-asyn` and `procserv`, so selecting it
-pulls those in; `epics-autosave` is only pulled in by recipes that use it. Keep the explicit entries if you
-want to build and inspect the individual packages.
+`epics-test-asyn-port-driver` depends on `epics-asyn` and `procserv`, so
+selecting it pulls those in; `epics-autosave` is only pulled in by recipes that
+use it. Keep the explicit entries if you want to build and inspect the
+individual packages.
 
 ## Build
 
@@ -207,7 +208,7 @@ Build a recipe on its own (faster than a full image while iterating):
 
 ```bash
 petalinux-build -c epics-base
-petalinux-build -c epics-asyn-scope-ioc
+petalinux-build -c epics-test-asyn-port-driver
 ```
 
 Then build the complete image:
@@ -231,7 +232,7 @@ After booting the target, verify:
 /opt/epics/base-7.0.10/lib/<target-architecture>/
 /opt/epics/modules/asyn -> asyn-4.46
 /opt/epics/modules/autosave -> autosave-6.0
-/opt/epics/iocs/asyn-scope-ioc -> asyn-scope-ioc-1.0
+/opt/epics/iocs/tapd -> tapd-1.0
 /etc/profile.d/epics.sh
 /usr/bin/procServ
 ```
