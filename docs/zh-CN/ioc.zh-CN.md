@@ -21,6 +21,33 @@ IOC 可执行文件和 `.dbd` 的 `*App/src`、放记录的 `*App/Db`，以及�
 从 asyn 源码构建 asyn 自带的模拟示波器测试 IOC（`testAsynPortDriver`）。阅读本文
 时请对照它的 recipe。
 
+## 启动目录
+
+社区布局是 `iocBoot/ioc<name>`，这里的 `ioc` 前缀不是装饰：生成的
+`iocBoot/Makefile` 用 `$(wildcard *ioc*)` 收集要构建的目录，名字里不含这段子串的
+目录根本不会运行 `convertRelease.pl`，也就不会有任何 `envPaths`。`epics-ioc` 执行
+host 侧 `install` 动作时依赖的正是这个通配，示例裁剪 asyn 其余启动目录用的也是它。
+
+`<name>` 是 *IOC 的名字*，与它要启动的“应用”是两种身份（`makeBaseApp.pl` 两个都会
+问，一个应用也可以被多个 `iocBoot/ioc<x>` 目录启动）。由此得到两条规则：
+
+* 重新打包既有 IOC 的 recipe 沿用那个 IOC 的名字：示例从
+  `iocBoot/ioctestAsynPortDriver` 启动，因为 asyn 上游的 IOC 就叫这个，改名只会让
+  这棵树更难与上游对照；
+* 自己的工程自己给 IOC 命名：BLM 应用从 `iocBoot/iocblm` 启动。
+
+*实例*名永远不进入目录树。实例是注册表条目（`scope01`、`blm`），所以一个打包应用
+和一份 `st.cmd` 服务全部实例，实例身份通过 `P` 和 `R` 传进来：不存在
+`iocBoot/iocscope01`。
+
+启动脚本也保持社区形状：先 source `envPaths`（`< envPaths`），由它把 `$(TOP)` 指向
+安装好的应用、给每个链接的模块一个自己的宏，然后从这里出发执行
+（`dbLoadDatabase("dbd/<app>.dbd")`、`$(ASYN)/db/asynRecord.db`），并在 `iocInit`
+之前回到启动目录（`cd "$(TOP)/iocBoot/$(IOC)"`）。第一行是起作用的条件而不是仪式：
+调度器导出的是注册表键，不含任何支持模块的信息，而 iocsh 对没有值的宏是原样
+保留文本——一份用了 `$(ASYN)` 却不 source `envPaths` 的脚本，请求的文件名就是字面的
+`$(ASYN)/db/asynRecord.db`，那组记录静默缺失，而 IOC 照样启动。
+
 ## 安装布局
 
 ```text

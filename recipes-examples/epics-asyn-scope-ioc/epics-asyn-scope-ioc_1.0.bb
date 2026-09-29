@@ -31,6 +31,16 @@ EPICS_MODULES = "asyn"
 # IOC_APP_NAME and IOC_PATH are build-time values (used by epics-ioc to
 # install the iocBoot tree); the registry entries below repeat them as
 # runtime data.
+#
+# The boot directory keeps the name upstream gave it, because in
+# iocBoot/ioc<name> the <name> is the IOC's own name and this IOC is
+# upstream's testAsynPortDriver, repackaged unchanged. The ioc prefix is not
+# decoration: iocBoot/Makefile collects the directories it builds with
+# $(wildcard *ioc*), so a boot dir without it would never get its envPaths --
+# and this recipe's pruning below and the class's install action both work
+# through that same wildcard. A tree of your own names its IOC instead (the
+# BLM application boots from iocBoot/iocblm); the instance names never appear
+# in the tree at all, they are registry entries.
 IOC_APP_NAME = "testAsynPortDriver"
 IOC_PATH = "iocBoot/ioctestAsynPortDriver"
 
@@ -65,6 +75,7 @@ do_configure:append() {
 
 do_install:append() {
     install_dir=${D}${EPICS_INSTALL_BASE}/${EPICS_MODULE_NAME}-${EPICS_MODULE_VERSION}
+    ioc_boot=${install_dir}/${IOC_PATH}
 
     # Phoebus display for the simulated oscilloscope. The default macros in
     # the file (P=ioc0:, R=scope1:) match the ioc0 instance env, so opening it
@@ -72,20 +83,42 @@ do_install:append() {
     install -d ${install_dir}/opi
     install -m 0644 ${WORKDIR}/opi/*.bob ${install_dir}/opi/
 
-    # The instance env supplies the PV prefix; the asyn port name is internal to
-    # the IOC process, so it stays as upstream wrote it.
-    sed -i -e 's/P=testAPD:/P=$(P)/g' -e 's/R=scope1:/R=$(R)/g' \
-        ${install_dir}/${IOC_PATH}/${IOC_ST_CMD}
-
-    # asynRecord.db belongs to the installed asyn module; load it from there
-    # through the ASYN variable that envPaths exports instead of shipping a
-    # second copy.
-    sed -i 's|\.\./\.\./db/asynRecord\.db|$(ASYN)/db/asynRecord.db|' \
-        ${install_dir}/${IOC_PATH}/${IOC_ST_CMD}
+    # Upstream wrote this boot script by hand, so it carries two paths relative
+    # to the build tree and never sources the envPaths that the class generates
+    # and installs beside it. Sourcing it is what makes the file the shape a
+    # makeBaseApp tree documents -- a shebang, then $(TOP) for the application
+    # and one macro per linked module -- and here it is also what makes it work:
+    # ASYN has a value only inside envPaths, and a macro iocsh cannot resolve
+    # stays in the text as written, so without that line the asynRecord.db load
+    # asks for a file called "$(ASYN)/db/asynRecord.db" and those records are
+    # absent while the IOC still boots. The dispatcher exports the registry keys
+    # and nothing about the support modules, so a module path can only come from
+    # envPaths; the instance env supplies the PV prefix, while the asyn port
+    # name is internal to the IOC process and stays as upstream wrote it.
+    #
+    # Assert first: if upstream renames what these rewrites match, the build has
+    # to fail here rather than ship a script that quietly loads half a database.
+    grep -q '^dbLoadDatabase("\.\./\.\./dbd/testAsynPortDriver\.dbd")' ${ioc_boot}/${IOC_ST_CMD}
+    grep -q '^dbLoadRecords("\.\./\.\./db/asynRecord\.db"' ${ioc_boot}/${IOC_ST_CMD}
+    grep -q 'P=testAPD:,R=scope1:' ${ioc_boot}/${IOC_ST_CMD}
+    # The cd back into the boot directory before iocInit is what gives $(IOC)
+    # -- envPaths writes it from the directory name -- its reason to exist, and
+    # it fails loudly if the registry's IOC_PATH and the installed tree ever
+    # disagree.
+    sed -i -e '1s|^|#!../../bin/${EPICS_TARGET_ARCH}/${IOC_APP_NAME}\n< envPaths\ncd "$(TOP)"\n|' \
+        -e 's|\.\./\.\./dbd/|dbd/|' \
+        -e 's|\.\./\.\./db/asynRecord\.db|$(ASYN)/db/asynRecord.db|' \
+        -e 's|\.\./\.\./db/|db/|' \
+        -e 's|P=testAPD:|P=$(P)|g' -e 's|R=scope1:|R=$(R)|g' \
+        -e 's|^iocInit()|cd "$(TOP)/iocBoot/$(IOC)"\niocInit()|' \
+        ${ioc_boot}/${IOC_ST_CMD}
 
     # asyn pins the iocBoot ARCH to the build host and also generates
     # cdCommands (vxWorks) and dllPath.bat (Windows); none of that is useful
-    # here.
-    rm -f ${install_dir}/${IOC_PATH}/cdCommands \
-          ${install_dir}/${IOC_PATH}/dllPath.bat
+    # here. st.cmd.vxWorks and nfsCommands are upstream's vxWorks originals,
+    # the same dead weight in a Linux-only package.
+    rm -f ${ioc_boot}/cdCommands \
+          ${ioc_boot}/dllPath.bat \
+          ${ioc_boot}/st.cmd.vxWorks \
+          ${install_dir}/iocBoot/nfsCommands
 }

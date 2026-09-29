@@ -24,6 +24,42 @@ example: it builds asyn's own simulated oscilloscope test IOC
 (`testAsynPortDriver`) straight from the asyn sources. Read its recipe alongside
 this document.
 
+## Boot directory
+
+The community layout is `iocBoot/ioc<name>`, and the `ioc` prefix is not
+cosmetic: the generated `iocBoot/Makefile` collects the directories it builds
+with `$(wildcard *ioc*)`, so a boot directory without that substring never runs
+`convertRelease.pl` and ships no `envPaths`. `epics-ioc` relies on the same
+wildcard when it runs the host `install` action, and the example prunes
+upstream's other boot directories through it.
+
+`<name>` is the *IOC's* name -- a different identity from the application it
+boots (`makeBaseApp.pl` asks for both, and one application can be booted by
+several `iocBoot/ioc<x>` directories). Two rules follow from that:
+
+* a recipe that repackages an existing IOC keeps that IOC's name: the example
+  boots `iocBoot/ioctestAsynPortDriver` because upstream asyn's IOC is called
+  that, and renaming it would only make the tree harder to diff against
+  upstream;
+* a tree of your own names its IOC itself: the BLM application boots from
+  `iocBoot/iocblm`.
+
+The *instance* never appears in the tree. Instances are registry entries
+(`scope01`, `blm`), so one packaged application and one `st.cmd` serve all of
+them and the per-instance identity comes in through `P` and `R`: there is no
+`iocBoot/iocscope01`.
+
+The boot script keeps its conventional shape too. It sources `envPaths` first
+(`< envPaths`), which is what gives `$(TOP)` the installed application and every
+linked module a macro of its own, then works from there
+(`dbLoadDatabase("dbd/<app>.dbd")`, `$(ASYN)/db/asynRecord.db`) and returns to
+the boot directory (`cd "$(TOP)/iocBoot/$(IOC)"`) before `iocInit`. That first
+line is load-bearing, not ceremony: the dispatcher exports the registry keys and
+nothing about the support modules, and an iocsh macro with no value is left in
+the line as literal text -- a script that uses `$(ASYN)` without sourcing
+`envPaths` asks for a file called `$(ASYN)/db/asynRecord.db`, loses that record
+set, and still starts.
+
 ## Install layout
 
 ```text
