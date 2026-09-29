@@ -46,7 +46,13 @@ IOC_PATH = "iocBoot/ioctestAsynPortDriver"
 
 # Two instances in the host-wide registry; both are installed but stay off
 # until the operator enables them (dev-board example IOC, not a fleet unit).
-EPICS_IOC_INSTANCE_ENVS = "${WORKDIR}/instances/scope01.env ${WORKDIR}/instances/scope02.env"
+# Named after the IOC, in the charset the registry allows -- lowercase
+# [a-z0-9-], which ioc-start.sh enforces because the name doubles as the
+# systemd unit instance, the state directory and the procServ name -- plus an
+# ordinal for a second copy. That is the same rule that gives the BLM IOC its
+# instance name blm; the CamelCase of the boot directory cannot cross into the
+# registry, so tapd01 boots iocBoot/ioctestAsynPortDriver.
+EPICS_IOC_INSTANCE_ENVS = "${WORKDIR}/instances/tapd01.env ${WORKDIR}/instances/tapd02.env"
 # Spelled out rather than left to the class default: this recipe is the
 # example every new IOC is copied from, and it must never auto-start.
 EPICS_IOC_AUTO_ENABLE = "disable"
@@ -78,8 +84,9 @@ do_install:append() {
     ioc_boot=${install_dir}/${IOC_PATH}
 
     # Phoebus display for the simulated oscilloscope. The default macros in
-    # the file (P=ioc0:, R=scope1:) match the ioc0 instance env, so opening it
-    # works unconfigured; other instances pass -m overrides in the client.
+    # the file (P=TAPD01:, R=scope1:) match the tapd01 instance env, so opening
+    # it works unconfigured; other instances pass -m overrides in the client,
+    # which is why the file is named for the instance it defaults to.
     install -d ${install_dir}/opi
     install -m 0644 ${WORKDIR}/opi/*.bob ${install_dir}/opi/
 

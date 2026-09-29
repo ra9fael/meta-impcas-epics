@@ -45,9 +45,15 @@ several `iocBoot/ioc<x>` directories). Two rules follow from that:
   `iocBoot/iocblm`.
 
 The *instance* never appears in the tree. Instances are registry entries
-(`scope01`, `blm`), so one packaged application and one `st.cmd` serve all of
+(`tapd01`, `blm`), so one packaged application and one `st.cmd` serve all of
 them and the per-instance identity comes in through `P` and `R`: there is no
-`iocBoot/iocscope01`.
+`iocBoot/ioctapd01`.
+
+A registry name is that same IOC name in the charset the dispatcher allows --
+lowercase `[a-z0-9-]`, enforced because the string also becomes the systemd
+unit instance, `/var/lib/epics-ioc/<name>` and the procServ name -- plus an
+ordinal for a second copy. So `iocBoot/iocblm` runs as `blm`, and
+`iocBoot/ioctestAsynPortDriver` runs as `tapd01` and `tapd02`.
 
 The boot script keeps its conventional shape too. It sources `envPaths` first
 (`< envPaths`), which is what gives `$(TOP)` the installed application and every
@@ -66,7 +72,7 @@ set, and still starts.
 /usr/lib/systemd/system/epics-ioc@.service     # one generic template for every IOC
 /usr/libexec/epics-ioc/{ioc-start.sh,ioc-ports.sh,epics-ioc-env}
 /usr/bin/{ioc-ports,ioc-manager,ioc-instance-add}
-/etc/epics/instances/{scope01.env,scope02.env} # the instance registry (fleet layer)
+/etc/epics/instances/{tapd01.env,tapd02.env}   # the instance registry (fleet layer)
 /opt/epics/iocs/asyn-scope-ioc -> asyn-scope-ioc-1.0
 /opt/epics/iocs/asyn-scope-ioc-1.0/
 ├── bin/linux-aarch64/testAsynPortDriver
@@ -97,9 +103,9 @@ EPICS_IOC_LIBDIRS = "${EPICS_PREFIX}/modules/asyn/lib/${EPICS_TARGET_ARCH} \
 IOC_APP_NAME = "myIoc"
 IOC_PATH     = "iocBoot/iocmy"
 
-# one instance named "myscope" (see below for the env file's keys)
-EPICS_IOC_INSTANCE_ENVS = "${WORKDIR}/myscope.env"
-EPICS_IOC_INSTANCES     = "myscope"
+# one instance, named after the IOC (see below for the env file's keys)
+EPICS_IOC_INSTANCE_ENVS = "${WORKDIR}/my.env"
+EPICS_IOC_INSTANCES     = "my"
 EPICS_IOC_AUTO_ENABLE   = "enable"
 ```
 
@@ -126,7 +132,7 @@ sysroot only applies at build time.
 
 ## Instances
 
-An instance is a host-global name (`scope01`, `blm`, ...) with a registry
+An instance is a host-global name (`tapd01`, `blm`, ...) with a registry
 entry -- a plain `KEY=value` env file. Two layers exist, later wins:
 
 * `/etc/epics/instances/<name>.env` -- the fleet layer, shipped in the image
@@ -150,9 +156,9 @@ IOC_APP_DIR=/opt/epics/iocs/asyn-scope-ioc   # where the application lives
 IOC_PATH=iocBoot/ioctestAsynPortDriver       # below IOC_APP_DIR
 IOC_APP_NAME=testAsynPortDriver              # empty: run st.cmd via shebang
 IOC_INSTANCE_INDEX=1                         # console 21010; global across every IOC
-P=ioc1:                                      # record prefix (separators included)
+P=TAPD01:                                    # record prefix (separators included)
 R=scope1:                                    # optional device root: records are $(P)$(R)...
-IOC_STATE=/var/lib/asyn-scope-ioc/scope01    # writable state dir the dispatcher creates
+IOC_STATE=/var/lib/epics-ioc/tapd01          # writable state dir the dispatcher creates
 IOC_STATE_DIRS="autosave"                    # subdirectories of IOC_STATE to create
 
 #CA_PORT=21013                              # optional: pin the CA server port (else dynamic)
@@ -232,8 +238,8 @@ entry with the smallest free slot, and `ioc-ports --show [instance]`
 prints the ports (and, for a running instance, the actual endpoints):
 
 ```sh
-ioc-instance-add myscope
-ioc-ports --show scope01
+ioc-instance-add tapd03
+ioc-ports --show tapd01
 ioc-ports --next
 ioc-ports --audit
 ```
@@ -250,8 +256,8 @@ ioc-manager restart blm           # restart one instance
 ioc-manager enable blm            # enable auto-start at boot
 ioc-manager disable blm           # disable auto-start at boot
 ioc-manager startall | stopall | restartall
-ioc-manager status scope01        # full systemctl status for one instance
-ioc-manager console scope01       # attach to its procServ console
+ioc-manager status tapd01         # full systemctl status for one instance
+ioc-manager console tapd01        # attach to its procServ console
 ioc-manager logs blm -f           # journal of one instance (no name: all);
                                   # -n N lines, -- passes args to journalctl
 ioc-manager show blm              # merged registry entry, layer per key
@@ -305,15 +311,15 @@ the service's cgroup, so systemd stops it together with the IOC.
 ## Target operations
 
 ```bash
-systemctl is-enabled 'epics-ioc@scope01'      # disabled: installed, not enabled
-systemctl enable --now 'epics-ioc@scope01'
-systemctl enable --now 'epics-ioc@scope02'
+systemctl is-enabled 'epics-ioc@tapd01'       # disabled: installed, not enabled
+systemctl enable --now 'epics-ioc@tapd01'
+systemctl enable --now 'epics-ioc@tapd02'
 netstat -ltnp | grep -E ':210[0-2][0-9]'      # consoles 21000 (blm) / 21010 / 21020
-cat /run/epics/scope02.info                   # PID and endpoints of the running IOC
+cat /run/epics/tapd02.info                    # PID and endpoints of the running IOC
 
-ioc-manager console scope01                   # console on this board (any port)
+ioc-manager console tapd01                    # console on this board (any port)
 telnet <board-ip> 21010                       # same console from another host
-telnet <board-ip> 21020                       # scope02's console from there
+telnet <board-ip> 21020                       # tapd02's console from there
 ```
 
 `ioc-manager console <name>` resolves the endpoint from the instance infofile
@@ -335,19 +341,19 @@ instance on the host receives the broadcast search and replies with its own
 port:
 
 ```bash
-caget ioc0:scope1:UpdateTime                # a writable ao record
-caget ioc0:scope1:Waveform_RBV              # the simulated waveform
-caget ioc1:scope1:Waveform_RBV              # the other instance, still no config
+caget TAPD01:scope1:UpdateTime                # a writable ao record
+caget TAPD01:scope1:Waveform_RBV              # the simulated waveform
+caget TAPD02:scope1:Waveform_RBV              # the other instance, still no config
 ```
 
 The waveform records of this IOC are read-only (`Waveform_RBV`,
 `TimeBase_RBV`); the writable records are `Run`, `VoltOffset`, `TriggerDelay`,
 `NoiseAmplitude`, `UpdateTime` and the three `*Select` enumerations. A Phoebus
 display for the oscilloscope is installed on the target at
-`/opt/epics/iocs/asyn-scope-ioc-1.0/opi/asyn-scope-ioc0.bob` -- copy it to the
-client and open it in Phoebus. Its default macros are `P=ioc0:`, `R=scope1:`,
-so it points at the ioc0 instance out of the box; another instance only needs
-`-m "P=ioc1:"` in the client.
+`/opt/epics/iocs/asyn-scope-ioc-1.0/opi/asyn-scope-tapd01.bob` -- copy it to
+the client and open it in Phoebus. Its default macros are `P=TAPD01:`,
+`R=scope1:`, so it points at the tapd01 instance out of the box; another
+instance only needs `-m "P=TAPD02:"` in the client.
 
 The simulated oscilloscope does not open sockets of its own, so its instances
 use no application ports. An IOC that does -- one that acts as a Modbus or
@@ -422,7 +428,7 @@ findmnt /boot                              # mounted by label, not device
 hostname; ip -4 addr show eth0             # machine.cfg applied
 
 # 2. registry and state
-ioc-manager list                           # blm enabled/active; scope01/02 installed
+ioc-manager list                           # blm enabled/active; tapd01/02 installed
 ioc-manager report                         # slot / port / prefix / application
 
 # 3. data plane: console banner carries the instance name, records carry P

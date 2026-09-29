@@ -231,8 +231,8 @@ target 上的开发环境提供了什么，见 [EPICS Base](docs/zh-CN/epics-bas
 IOC 应用的部分见 [IOC 应用](docs/zh-CN/ioc.zh-CN.md)，简要流程：
 
 ```bash
-systemctl enable --now 'epics-asyn-scope-ioc@ioc0'
-caget ioc0:scope1:Waveform1.VAL
+systemctl enable --now 'epics-ioc@tapd01'
+caget TAPD01:scope1:Waveform_RBV
 ```
 
 ## 排障

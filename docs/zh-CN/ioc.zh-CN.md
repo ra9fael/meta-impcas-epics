@@ -36,9 +36,14 @@ host 侧 `install` 动作时依赖的正是这个通配，示例裁剪 asyn 其�
   这棵树更难与上游对照；
 * 自己的工程自己给 IOC 命名：BLM 应用从 `iocBoot/iocblm` 启动。
 
-*实例*名永远不进入目录树。实例是注册表条目（`scope01`、`blm`），所以一个打包应用
+*实例*名永远不进入目录树。实例是注册表条目（`tapd01`、`blm`），所以一个打包应用
 和一份 `st.cmd` 服务全部实例，实例身份通过 `P` 和 `R` 传进来：不存在
-`iocBoot/iocscope01`。
+`iocBoot/ioctapd01`。
+
+注册表名字就是同一个 IOC 名换成调度器允许的字符集——小写 `[a-z0-9-]`，因为这个串
+同时会成为 systemd unit 实例、`/var/lib/epics-ioc/<name>` 和 procServ 名字——再加
+一个序号表示第二份。所以 `iocBoot/iocblm` 的实例叫 `blm`，
+`iocBoot/ioctestAsynPortDriver` 的实例叫 `tapd01` 和 `tapd02`。
 
 启动脚本也保持社区形状：先 source `envPaths`（`< envPaths`），由它把 `$(TOP)` 指向
 安装好的应用、给每个链接的模块一个自己的宏，然后从这里出发执行
@@ -54,7 +59,7 @@ host 侧 `install` 动作时依赖的正是这个通配，示例裁剪 asyn 其�
 /usr/lib/systemd/system/epics-ioc@.service     # 全部 IOC 共用一个通用模板
 /usr/libexec/epics-ioc/{ioc-start.sh,ioc-ports.sh,epics-ioc-env}
 /usr/bin/{ioc-ports,ioc-manager,ioc-instance-add}
-/etc/epics/instances/{scope01.env,scope02.env} # 实例注册表（队级层）
+/etc/epics/instances/{tapd01.env,tapd02.env}   # 实例注册表（队级层）
 /opt/epics/iocs/asyn-scope-ioc -> asyn-scope-ioc-1.0
 /opt/epics/iocs/asyn-scope-ioc-1.0/
 ├── bin/linux-aarch64/testAsynPortDriver
@@ -109,7 +114,7 @@ IOC 链接到的每个模块都必须写进 `RDEPENDS`：shlibs 扫描看不到
 
 ## 实例
 
-一个实例就是一个全机唯一的名字（`scope01`、`blm`……）加一条注册表条目——一个
+一个实例就是一个全机唯一的名字（`tapd01`、`blm`……）加一条注册表条目——一个
 纯 `KEY=value` 的 env 文件。注册表分两层，后者覆盖前者：
 
 * `/etc/epics/instances/<name>.env` —— 队级层，由 IOC 包随镜像安装；
@@ -131,9 +136,9 @@ IOC_APP_DIR=/opt/epics/iocs/asyn-scope-ioc   # 应用所在目录
 IOC_PATH=iocBoot/ioctestAsynPortDriver       # 相对 IOC_APP_DIR
 IOC_APP_NAME=testAsynPortDriver              # 留空：通过 shebang 运行 st.cmd
 IOC_INSTANCE_INDEX=1                         # 控制台 21010；对 target 上所有 IOC 全局唯一
-P=ioc1:                                      # 记录前缀（分隔符包含在值里）
+P=TAPD01:                                    # 记录前缀（分隔符包含在值里）
 R=scope1:                                    # 可选设备根：记录名形如 $(P)$(R)...
-IOC_STATE=/var/lib/asyn-scope-ioc/scope01    # 可写的实例状态目录（autosave save 文件）
+IOC_STATE=/var/lib/epics-ioc/tapd01          # 可写的实例状态目录（autosave save 文件）
 IOC_STATE_DIRS="autosave"                    # IOC_STATE 下需要一并创建的子目录
 
 #CA_PORT=21013                              # 可选：固定 CA 服务端口（否则动态）
@@ -235,8 +240,8 @@ IOC_STATE_DIRS="autosave"                    # IOC_STATE 下需要一并创建�
 实例还会列出实际 endpoint）：
 
 ```sh
-ioc-instance-add myscope
-ioc-ports --show scope01
+ioc-instance-add tapd03
+ioc-ports --show tapd01
 ioc-ports --next
 ioc-ports --audit
 ```
@@ -253,8 +258,8 @@ ioc-manager restart blm           # 重启单个实例
 ioc-manager enable blm            # 开机自启
 ioc-manager disable blm           # 取消开机自启
 ioc-manager startall | stopall | restartall
-ioc-manager status scope01        # 单个实例的完整 systemctl status
-ioc-manager console scope01       # 接入该实例的 procServ 控制台
+ioc-manager status tapd01         # 单个实例的完整 systemctl status
+ioc-manager console tapd01        # 接入该实例的 procServ 控制台
 ioc-manager logs blm -f           # 单个实例的 journal（不带名字则合并全部）；
                                   # -n N 行数，-- 之后的参数透传给 journalctl
 ioc-manager show blm              # 合并后的注册表条目，逐键标注来源层
@@ -301,15 +306,15 @@ procServ 本身。`ioc-start.sh <实例名>` 依次：
 ## target 上的操作
 
 ```bash
-systemctl is-enabled 'epics-ioc@scope01'      # disabled：已安装，未启用
-systemctl enable --now 'epics-ioc@scope01'
-systemctl enable --now 'epics-ioc@scope02'
-netstat -ltnp | grep -E ':210[0-2][0-9]'       # 控制台 21000（blm）/ 21010 / 21020
-cat /run/epics/scope02.info                   # 运行中 IOC 的 PID 与 endpoint
+systemctl is-enabled 'epics-ioc@tapd01'      # disabled：已安装，未启用
+systemctl enable --now 'epics-ioc@tapd01'
+systemctl enable --now 'epics-ioc@tapd02'
+netstat -ltnp | grep -E ':210[0-2][0-9]'     # 控制台 21000（blm）/ 21010 / 21020
+cat /run/epics/tapd02.info                   # 运行中 IOC 的 PID 与 endpoint
 
-ioc-manager console scope01                   # 本机接入控制台（不用记端口）
-telnet <板卡IP> 21010                         # 从其他主机接同一个控制台
-telnet <板卡IP> 21020                         # 从其他主机接 scope02
+ioc-manager console tapd01                   # 本机接入控制台（不用记端口）
+telnet <板卡IP> 21010                        # 从其他主机接同一个控制台
+telnet <板卡IP> 21020                        # 从其他主机接 tapd02
 ```
 
 `ioc-manager console <实例名>` 从实例 infofile 解析 endpoint（因此固定
@@ -329,17 +334,17 @@ one-shot 方式运行：IOC 退出——无论崩溃还是控制台里 `^X`—�
 自己的端口应答：
 
 ```bash
-caget ioc0:scope1:UpdateTime                # 可写的 ao 记录
-caget ioc0:scope1:Waveform_RBV              # 模拟波形
-caget ioc1:scope1:Waveform_RBV             # 另一个实例，同样零配置
+caget TAPD01:scope1:UpdateTime                # 可写的 ao 记录
+caget TAPD01:scope1:Waveform_RBV              # 模拟波形
+caget TAPD02:scope1:Waveform_RBV              # 另一个实例，同样零配置
 ```
 
 这个 IOC 的波形记录是只读的（`Waveform_RBV`、`TimeBase_RBV`）；可写的记录是
 `Run`、`VoltOffset`、`TriggerDelay`、`NoiseAmplitude`、`UpdateTime` 和三个
 `*Select` 枚举。示波器的 Phoebus 显示界面随 IOC 装在目标板的
-`/opt/epics/iocs/asyn-scope-ioc-1.0/opi/asyn-scope-ioc0.bob`——把它拷到客户端用
-Phoebus 打开即可。文件里的默认宏是 `P=ioc0:`、`R=scope1:`，开箱即指向 ioc0
-实例；其他实例只需在客户端加 `-m "P=ioc1:"`。
+`/opt/epics/iocs/asyn-scope-ioc-1.0/opi/asyn-scope-tapd01.bob`——把它拷到客户端用
+Phoebus 打开即可。文件里的默认宏是 `P=TAPD01:`、`R=scope1:`，开箱即指向 tapd01
+实例；其他实例只需在客户端加 `-m "P=TAPD02:"`。
 
 模拟示波器不自己开 socket，所以它的实例不占用应用口。需要应用口的 IOC——比如
 做 Modbus 或 stream-device 服务端的——在 env 文件里固定，并写入

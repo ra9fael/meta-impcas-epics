@@ -31,9 +31,9 @@ The instance env file sets it:
 
 ```sh
 IOC_INSTANCE_INDEX=1        # console 21010, app ports 21011/21012
-P=ioc1:
+P=TAPD01:
 R=scope1:
-IOC_STATE=/var/lib/<PN>/ioc1
+IOC_STATE=/var/lib/epics-ioc/tapd01
 ```
 
 The mapper is the `ioc-ports` command (a thin wrapper over

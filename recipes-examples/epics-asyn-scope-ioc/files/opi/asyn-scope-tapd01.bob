@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <display version="2.0.0">
-  <name>ioc0:scope1</name>
+  <name>TAPD01:scope1</name>
   <macros>
-    <P>ioc0:</P>
+    <P>TAPD01:</P>
     <R>scope1:</R>
   </macros>
   <x>317</x>

@@ -29,9 +29,9 @@ recipe 与实例如何配置见 [ioc.md](ioc.zh-CN.md)。
 
 ```sh
 IOC_INSTANCE_INDEX=1        # 控制台 21010，应用口 21011/21012
-P=ioc1:
+P=TAPD01:
 R=scope1:
-IOC_STATE=/var/lib/<PN>/ioc1
+IOC_STATE=/var/lib/epics-ioc/tapd01
 ```
 
 换算由 `ioc-ports` 命令（`/usr/libexec/epics-ioc/ioc-ports.sh` 的薄包装）完成：

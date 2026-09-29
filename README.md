@@ -243,8 +243,8 @@ setup provides, is described in [EPICS Base](docs/epics-base.md).
 For the IOC application, see [IOC applications](docs/ioc.md). The short version:
 
 ```bash
-systemctl enable --now 'epics-asyn-scope-ioc@ioc0'
-caget ioc0:scope1:Waveform1.VAL
+systemctl enable --now 'epics-ioc@tapd01'
+caget TAPD01:scope1:Waveform_RBV
 ```
 
 ## Troubleshooting
