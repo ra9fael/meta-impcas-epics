@@ -173,7 +173,7 @@ IOC_STATE_DIRS="autosave"                    # IOC_STATE 下需要一并创建�
   `epicsEnvSet` 优先级更高：它在 st.cmd 里更晚执行。
 * BLM IOC 正是围绕这个优先级组织的：它的 recipe 从安装后的 `envPaths` 里删掉
   `epicsEnvSet("P", ...)` 这一行，把应用硬编码的两个可写路径改写成
-  `$(IOC_STATE)/autosave` 和 `$(IOC_STATE)/calibrations`，并去掉那行 source
+  `$(IOC_STATE)/autosave` 和 `$(IOC_STATE)/calibration`，并去掉那行 source
   `/boot/iocs/.../envPaths` 的命令；于是前缀和状态目录位置都成了普通的注册表键，
   每台机器只需一个文件：
 
@@ -206,7 +206,7 @@ IOC_STATE_DIRS="autosave"                    # IOC_STATE 下需要一并创建�
   P=XRAY:BLM00
   R=
   IOC_STATE=/boot/iocs/blm
-  IOC_STATE_DIRS="autosave calibrations"
+  IOC_STATE_DIRS="autosave calibration"
   IOC_HOST=
   ```
 

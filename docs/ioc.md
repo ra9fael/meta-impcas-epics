@@ -195,7 +195,7 @@ at most a bench default for it, never a machine's own:
 * the BLM IOC is built around exactly that precedence. Its recipe deletes the
   `epicsEnvSet("P", ...)` line from the installed `envPaths`, retargets the two
   writable paths the application hard-codes to `$(IOC_STATE)/autosave` and
-  `$(IOC_STATE)/calibrations`, and drops the line that sourced a
+  `$(IOC_STATE)/calibration`, and drops the line that sourced a
   `/boot/iocs/.../envPaths`, so the prefix and the state directory are both
   ordinary registry keys and one file per machine is enough:
 
@@ -373,7 +373,7 @@ files on the BOOT partition are:
 machine/machine.cfg            # HOSTNAME / IP / mask / gateway / DNS / NTP
 iocs/blm/blm.env               # the keys a machine may decide; P is this machine's
 iocs/blm/autosave/             # this machine's autosave data, written by the IOC
-iocs/blm/calibrations/         # optional: ADC calibration files for this board
+iocs/blm/calibration/          # optional: ADC calibration files for this board
 fpga/<name>.bit.bin            # optional bitstream pool
 fpga/active.conf               # optional: BITSTREAM=<pool file name>
 ```
@@ -384,7 +384,7 @@ for every instance the image auto-starts -- the projected env file plus the
 instance's data folders, empty, so the card is ready before anyone touches it.
 Staging never replaces anything the card already holds: the build's copy is a
 template, the card's copy is this machine's configuration and its data, so
-re-imaging a board keeps its prefix, its calibrations and its saved thresholds.
+re-imaging a board keeps its prefix, its calibration and its saved thresholds.
 
 The projected file holds the machine keys and nothing else -- one line each, in
 the order `EPICS_IOC_MACHINE_KEYS` lists them, each with the value this image
@@ -394,7 +394,7 @@ ships:
 P=XRAY:BLM00
 R=
 IOC_STATE=/boot/iocs/blm
-IOC_STATE_DIRS="autosave calibrations"
+IOC_STATE_DIRS="autosave calibration"
 IOC_HOST=
 ```
 
