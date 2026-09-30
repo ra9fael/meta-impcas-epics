@@ -127,11 +127,9 @@ recipe 里 `EPICS_IOC_INSTANCES` 与 `EPICS_IOC_AUTO_ENABLE = "enable"` 同时
 `ioc-start.sh` 会扫描 infofile，把已占用该控制台端口的实例名和 PID 打出来。
 
 占用者未必是当前实例：rootfs 若是覆盖更新而非重新烧写，旧镜像的 unit 连同
-其 `.wants` 软链接会留下来，开机即启动并占住端口（实测
-`epics-asyn-scope-ioc@ioc0.service` 占着 21000——这个包名是它改名之前的，
-残留 unit 记住的正是当初烧进 rootfs 的那个名字）。用
-`systemctl list-units --all | grep -i ioc` 查看，禁用并删除残留文件，
-或干脆重新烧写 rootfs 分区。
+其 `.wants` 软链接会留下来，开机即启动并占住端口（实测有一个残留 unit
+占着 21000）。用 `systemctl list-units --all | grep -i ioc` 查看，禁用并删除
+残留文件，或干脆重新烧写 rootfs 分区。
 
 ### 客户端连不上某一个特定的 IOC
 
