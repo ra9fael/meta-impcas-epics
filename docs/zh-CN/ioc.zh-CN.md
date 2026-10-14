@@ -119,8 +119,10 @@ IOC 链接到的每个模块都必须写进 `RDEPENDS`：shlibs 扫描看不到
 纯 `KEY=value` 的 env 文件。注册表分两层，后者覆盖前者：
 
 * `/etc/epics/instances/<name>.env` —— 队级层，由 IOC 包随镜像安装；
-* `/boot/iocs/<name>/<name>.env` —— 机器级层，位于可写的 BOOT 分区，用于每台
-  机器的差异化覆盖。镜像自动启动的每个实例，`epics-ioc-systemd` 都会把这个文件
+* `/boot/iocs/<name>/<name>.env` —— 机器级层，位于 BOOT 分区，用于每台
+  机器的差异化覆盖。target 把该分区以只读挂载（见 meta-impcas-site 的
+  `bootmount`）：它是部署人员插到 PC 上离线编辑的配置载体，不承载机器自己的
+  数据。镜像自动启动的每个实例，`epics-ioc-systemd` 都会把这个文件
   的初始版本 deploy 出来：队级条目向“本机可以决定的键”的投影，键清单就是
   `EPICS_IOC_MACHINE_KEYS`，默认 `P`、`R`、`IOC_STATE`、`IOC_STATE_DIRS`、
   `IOC_HOST`；`inflate-sd.sh` 再把整个目录拷到卡上。所以在部署好的机器上，这个
@@ -185,19 +187,26 @@ IOC_STATE_DIRS="autosave"                    # IOC_STATE 下需要一并创建�
   目录按实例名而不是按 iocBoot 目录命名：运维要碰的是 `iocs/blm/`。autosave 库
   只保存它拿到的路径，BLM 驱动也只会在目标路径旁打开文件，两者都建不出不存在的
   目录——这就是 `IOC_STATE` 加 `IOC_STATE_DIRS` 的用处：调度器在 exec procServ
-  之前，就按条目指定的介质把整棵目录树建好。本机取
-  `IOC_STATE=/boot/iocs/blm`，调好的阈值和标定文件因此能穿过一次 rootfs 重刷，
-  并随机器一起走；条目里不设这个键的机器会拿到 `/var/lib/epics-ioc/blm`，其它
-  一切不变。
+  之前，就按条目指定的介质把整棵目录树建好。队级层现在指定的是带日志的 ext4
+  rootfs：`IOC_STATE=/var/lib/epics-ioc/blm`。BOOT 分区仍是部署人员放配置的介质，
+  但它是不带日志的 FAT，而一块 BLM 板子丢不起的两样东西——`autosave/` 里调好的
+  联锁阈值和这块板的 ADC 标定——不该住在断电就能要了它们的地方。以前正是如此：
+  FAT 一脏，内核就在开机时把 `/boot` 改挂成只读，之后的每一次保存都被一台看起来
+  完全健康的机器悄悄丢掉，唯一一份标定也随分区一起没了。
 
-  `IOC_STATE` 和 `IOC_STATE_DIRS` 之所以在卡上，是因为这台机器的数据落在哪个介质
-  上，队级层替它决定不了：没有独立 BOOT 分区的板子必须自己说一声。代价是一个值得
-  讲清楚的隐患。这两个键是一对——recipe 把应用里写死的可写路径改成了
+  `IOC_STATE` 和 `IOC_STATE_DIRS` 之所以仍在卡上，是因为这台机器的数据落在哪个
+  介质上，队级层替它决定不了：没有独立 BOOT 分区的板子必须自己说一声，而一块就是
+  要把数据放卡上的板子也可以把这一对键指回去——只是现在是有意识地指。这带来一个
+  值得讲清楚的隐患。这两个键是一对——recipe 把应用里写死的可写路径改成了
   `$(IOC_STATE)/<dir>`——只改一个就会把一台机器的数据拆到两个地方。而在一台已经有
   save 文件的机器上挪动 `IOC_STATE`，IOC 打开的就是另一套、大概率是空的 save：
   第 0 轮什么都恢复不回来，反而把记录默认值当成这台机器自己的设置写回去，在联锁
   真的动作之前没人会看出症状。`ioc-manager doctor` 会检查它指向的目录可写，那能
   抓住拼错的路径；但一个空目录和这台机器自己的目录，它分不出来。
+
+  这次搬迁的代价落在 rootfs 上，不在卡上：普通重新部署是把 rootfs 覆盖解压，
+  `autosave/` 和 `calibration/` 原样留着；`inflate-sd.sh --wipe-rootfs` 会连它们
+  一起重刷，而标定是这块板唯一的副本——用那个开关之前，先把两样都备份到卡外。
 
   这个文件在卡上的起点，是条目向“机器键清单”的投影：每个键一行，顺序按
   `EPICS_IOC_MACHINE_KEYS` 来，值就是本镜像发出的那个：
@@ -205,7 +214,7 @@ IOC_STATE_DIRS="autosave"                    # IOC_STATE 下需要一并创建�
   ```text
   P=XRAY:BLM00
   R=
-  IOC_STATE=/boot/iocs/blm
+  IOC_STATE=/var/lib/epics-ioc/blm
   IOC_STATE_DIRS="autosave calibration"
   IOC_HOST=
   ```

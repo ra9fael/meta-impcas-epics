@@ -137,8 +137,11 @@ entry -- a plain `KEY=value` env file. Two layers exist, later wins:
 
 * `/etc/epics/instances/<name>.env` -- the fleet layer, shipped in the image
   by the IOC package;
-* `/boot/iocs/<name>/<name>.env` -- the machine layer on the writable BOOT
-  partition, for per-machine overrides. For every instance the image
+* `/boot/iocs/<name>/<name>.env` -- the machine layer on the BOOT partition,
+  for per-machine overrides. The target mounts that partition read-only (see
+  `bootmount` in meta-impcas-site): it is what a deployer edits offline with
+  the card in a PC, and it carries configuration, not the machine's own data.
+  For every instance the image
   auto-starts, `epics-ioc-systemd` deploys that file's starting point: the
   fleet entry projected down to the keys a machine may decide --
   `EPICS_IOC_MACHINE_KEYS`, by default `P`, `R`, `IOC_STATE`, `IOC_STATE_DIRS`
@@ -209,23 +212,33 @@ at most a bench default for it, never a machine's own:
   path it is given and the BLM driver only opens a file beside its target, so
   neither can make a directory -- which is what `IOC_STATE` plus
   `IOC_STATE_DIRS` are for: the dispatcher creates the tree before exec'ing
-  procServ, on whatever medium the entry names. `IOC_STATE=/boot/iocs/blm`
-  keeps this board's tuned thresholds and its calibration through a rootfs
-  re-imaging and lets them travel with the machine; an entry that leaves the
-  key out gets `/var/lib/epics-ioc/blm` instead, and nothing else changes.
+  procServ, on whatever medium the entry names. The fleet names the journaling
+  ext4 rootfs: `IOC_STATE=/var/lib/epics-ioc/blm`. The BOOT partition is the
+  deployer's medium for configuration, but it is a FAT with no journal, and the
+  two files a BLM board cannot afford to lose -- the tuned interlock thresholds
+  in `autosave/` and the board's ADC calibration -- must not live where a power
+  cut can end them. It used to: a dirty FAT made the kernel remount `/boot`
+  read-only at boot, every later save was dropped by a machine that still
+  looked healthy, and the only copy of the calibration went with the volume.
 
   `IOC_STATE` and `IOC_STATE_DIRS` are on the card because which medium this
   board's data lives on is not something the fleet can decide for it: a board
-  with no separate BOOT partition has to say so. That comes with a hazard worth
-  stating plainly. The two are a pair -- the recipe rewrites the application's
-  paths to `$(IOC_STATE)/<dir>` -- so changing one without the other splits one
-  board's data over two places. And retargeting `IOC_STATE` on a machine that
-  already has saves makes the IOC open a different, most likely empty set of
-  them: restore nothing at pass 0, write the record defaults back as this
-  machine's own settings, and no symptom anyone would notice before an interlock
-  fires. `ioc-manager doctor` checks that the directory it names is writable,
-  which catches a mistyped path; it cannot tell an empty directory from this
-  board's own.
+  with no separate BOOT partition has to say so, and a board that still wants
+  its data on the card can point the pair back there -- now knowingly. That
+  comes with a hazard worth stating plainly. The two are a pair -- the recipe
+  rewrites the application's paths to `$(IOC_STATE)/<dir>` -- so changing one
+  without the other splits one board's data over two places. And retargeting
+  `IOC_STATE` on a machine that already has saves makes the IOC open a
+  different, most likely empty set of them: restore nothing at pass 0, write the
+  record defaults back as this machine's own settings, and no symptom anyone
+  would notice before an interlock fires. `ioc-manager doctor` checks that the
+  directory it names is writable, which catches a mistyped path; it cannot tell
+  an empty directory from this board's own.
+
+  What the move costs is the rootfs's, not the card's: a plain re-deploy
+  extracts over the running rootfs and leaves `autosave/` and `calibration/`
+  alone, but `inflate-sd.sh --wipe-rootfs` re-images them, and the calibration
+  is the board's only copy -- back both up off the card before using that flag.
 
 Colon style follows the database: the record names in the `.db` templates
 already carry the separator (`$(P):CH0:...`), so `P` values are written
@@ -372,19 +385,22 @@ files on the BOOT partition are:
 ```text
 machine/machine.cfg            # HOSTNAME / IP / mask / gateway / DNS / NTP
 iocs/blm/blm.env               # the keys a machine may decide; P is this machine's
-iocs/blm/autosave/             # this machine's autosave data, written by the IOC
-iocs/blm/calibration/          # optional: ADC calibration files for this board
 fpga/<name>.bit.bin            # optional bitstream pool
 fpga/active.conf               # optional: BITSTREAM=<pool file name>
 ```
 
+This machine's own data is not on the card: it is under the rootfs, in
+`/var/lib/epics-ioc/blm/{autosave,calibration}` (the dispatcher creates it)
+and `/var/lib/clocksave/clock.save`.
+
 `inflate-sd.sh` stages all of it: the two site files from the templates bootcfg
 and fpgacfg deploy, and `iocs/blm/` from the tree `epics-ioc-systemd` deploys
-for every instance the image auto-starts -- the projected env file plus the
-instance's data folders, empty, so the card is ready before anyone touches it.
+for every instance the image auto-starts -- the projected env file, plus the
+instance's data folders only when its entry points `IOC_STATE` at the card.
 Staging never replaces anything the card already holds: the build's copy is a
-template, the card's copy is this machine's configuration and its data, so
-re-imaging a board keeps its prefix, its calibration and its saved thresholds.
+template, the card's copy is this machine's configuration, so re-imaging a
+board keeps its prefix. The calibration and the saved thresholds live on the
+rootfs now, where a plain re-deploy leaves them and `--wipe-rootfs` does not.
 
 The projected file holds the machine keys and nothing else -- one line each, in
 the order `EPICS_IOC_MACHINE_KEYS` lists them, each with the value this image
@@ -393,7 +409,7 @@ ships:
 ```text
 P=XRAY:BLM00
 R=
-IOC_STATE=/boot/iocs/blm
+IOC_STATE=/var/lib/epics-ioc/blm
 IOC_STATE_DIRS="autosave calibration"
 IOC_HOST=
 ```
@@ -426,7 +442,7 @@ Then boot and walk the chain:
 ```bash
 # 1. the four services, in order
 systemctl status bootmount bootcfg fpgacfg epics-ioc@blm --no-pager
-findmnt /boot                              # mounted by label, not device
+findmnt /boot                              # mounted by label, read-only
 hostname; ip -4 addr show eth0             # machine.cfg applied
 
 # 2. registry and state

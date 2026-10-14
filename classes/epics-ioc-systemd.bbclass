@@ -91,9 +91,10 @@ EPICS_IOC_CARD_MOUNT ?= "/boot"
 # line to fill in.
 EPICS_IOC_MACHINE_KEYS ?= "P R IOC_STATE IOC_STATE_DIRS IOC_HOST"
 
-# Put the machine layer on the card as a directory that already exists -- with
-# the instance's data folders in it -- because deploying a BLM board is a job
-# for someone who only ever sees the FAT partition from Windows. Creating
+# Put the machine layer on the card as a directory that already exists -- and,
+# when the entry puts its state there, with the instance's data folders in it
+# -- because deploying a BLM board is a job for someone who only ever sees the
+# FAT partition from Windows. Creating
 # iocs/blm/blm.env by hand means typing an exact name into a dialog whose .txt
 # extension is hidden, and blm.env.txt is silently not a registry entry: the
 # IOC starts, publishes the fleet prefix, and nothing looks wrong until the

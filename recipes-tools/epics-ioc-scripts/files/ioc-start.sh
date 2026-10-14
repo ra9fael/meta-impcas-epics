@@ -52,7 +52,8 @@ load_env() {
 }
 load_env "$ENV_ROOT/$INSTANCE.env"
 
-# Machine-level overrides (site config on the writable BOOT partition), last
+# Machine-level overrides (site config on the BOOT partition, which bootmount
+# mounts read-only -- see meta-impcas-site), last
 # one wins: P, R, IOC_STATE, IOC_STATE_DIRS, CA_PORT/PVA_PORT, PS_PORT,
 # APP_PORT_1/2. Note that inside the IOC an envPaths epicsEnvSet outranks these
 # environment values (it runs later, from st.cmd) -- which is why the IOC
